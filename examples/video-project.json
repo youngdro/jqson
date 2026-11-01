@@ -1,0 +1,35 @@
+{
+  "type": "project",
+  "id": "promo",
+  "canvas": { "width": 720, "height": 1280, "fps": 30 },
+  "zones": {
+    "hero": { "x": 0, "y": 0, "w": 720, "h": 760 },
+    "caption-band": { "x": 40, "y": 800, "w": 640, "h": 160 },
+    "price-band": { "x": 40, "y": 1000, "w": 640, "h": 200 }
+  },
+  "children": [
+    {
+      "type": "segment", "id": "hook", "class": "intro",
+      "children": [
+        { "type": "video", "id": "hero-shot", "src": "assets/bottle.mp4", "zone": "hero", "start": 0, "duration": 3.2 },
+        { "type": "text", "id": "hook-title", "class": "caption big", "text": "夏天一瓶就够", "zone": "caption-band", "start": 0.2, "duration": 2.8, "style": { "color": "#ffffff", "fontSize": 64 }, "motion": { "preset": "pop-in" } }
+      ]
+    },
+    {
+      "type": "segment", "id": "selling",
+      "children": [
+        { "type": "image", "id": "detail-1", "src": "assets/detail-1.png", "zone": "hero", "start": 3.2, "duration": 2.0 },
+        { "type": "text", "id": "point-1", "class": "caption", "text": "0 糖 0 脂", "zone": "caption-band", "start": 3.3, "duration": 1.8, "style": { "color": "#ffffff", "fontSize": 48 }, "motion": { "preset": "slide-up" } },
+        { "type": "image", "id": "detail-2", "src": "assets/detail-2.png", "zone": "hero", "start": 5.2, "duration": 2.0 },
+        { "type": "text", "id": "point-2", "class": "caption", "text": "冰镇口感更清爽", "zone": "caption-band", "start": 5.3, "duration": 1.8, "style": { "color": "#ffffff", "fontSize": 48 }, "motion": { "preset": "slide-up" } }
+      ]
+    },
+    {
+      "type": "segment", "id": "offer", "class": "cta",
+      "children": [
+        { "type": "lottie", "id": "price-tag", "src": "presets/price-bounce.json", "zone": "price-band", "start": 7.4, "duration": 2.4, "fields": { "price": "¥39", "was": "¥59" } },
+        { "type": "text", "id": "cta-text", "class": "caption big", "text": "点击下方立即抢购", "zone": "caption-band", "start": 7.6, "duration": 2.2, "style": { "color": "#ffe14d", "fontSize": 56 }, "motion": { "preset": "pulse" } }
+      ]
+    }
+  ]
+}

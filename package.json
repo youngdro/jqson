@@ -1,0 +1,39 @@
+{
+  "name": "jsondom",
+  "version": "0.2.0",
+  "description": "像操作 DOM 一样操作 JSON：CSS 选择器查询、链式修改、事务回滚、变更流、fork/merge 并行。浏览器和 Node 通用，零依赖。",
+  "type": "module",
+  "main": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./worker": "./src/worker.js"
+  },
+  "bin": {
+    "jsondom": "./bin/jsondom.js"
+  },
+  "files": [
+    "src",
+    "bin",
+    "examples",
+    "README.md",
+    "AGENTS.md"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "bench": "node bench/bench.js"
+  },
+  "license": "MIT",
+  "keywords": [
+    "json",
+    "css-selector",
+    "dom",
+    "jquery",
+    "patch",
+    "agent",
+    "parallel"
+  ]
+}
