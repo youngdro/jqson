@@ -1,7 +1,7 @@
 {
-  "name": "@youngdro/jsondom",
+  "name": "jqson",
   "version": "0.2.0",
-  "description": "像操作 DOM 一样操作 JSON：CSS 选择器查询、链式修改、事务回滚、变更流、fork/merge 并行。浏览器和 Node 通用，零依赖。",
+  "description": "jQuery for JSON：CSS 选择器查询、链式修改、事务回滚、变更流、fork/merge 并行。浏览器和 Node 通用，零依赖。",
   "type": "module",
   "main": "./src/index.js",
   "exports": {
@@ -9,7 +9,7 @@
     "./worker": "./src/worker.js"
   },
   "bin": {
-    "jsondom": "./bin/jsondom.js"
+    "jqson": "./bin/jqson.js"
   },
   "files": [
     "src",
@@ -38,11 +38,11 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/youngdro/jsondom.git"
+    "url": "git+https://github.com/youngdro/jqson.git"
   },
-  "homepage": "https://github.com/youngdro/jsondom#readme",
+  "homepage": "https://github.com/youngdro/jqson#readme",
   "bugs": {
-    "url": "https://github.com/youngdro/jsondom/issues"
+    "url": "https://github.com/youngdro/jqson/issues"
   },
   "publishConfig": {
     "access": "public"

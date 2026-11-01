@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import jsondom, { help, inspect, explain } from '../src/index.js';
+import jqson, { help, inspect, explain } from '../src/index.js';
 
 const data = JSON.parse(fs.readFileSync(new URL('../examples/video-project.json', import.meta.url)));
 
@@ -17,7 +17,7 @@ test('help: overview, topics, api lookup, fuzzy suggestions', () => {
 });
 
 test('help covers every public Selection and JsonDoc method', () => {
-  const doc = jsondom(data);
+  const doc = jqson(data);
   const text = help.api().map((a) => a.sig).join('\n');
   const methods = (proto) => Object.getOwnPropertyNames(proto).filter((m) => !m.startsWith('_') && m !== 'constructor');
   const missing = [...methods(Object.getPrototypeOf(doc.$('text'))), ...methods(Object.getPrototypeOf(doc))]
@@ -36,7 +36,7 @@ test('explain: describes selectors and locates syntax errors', () => {
 });
 
 test('inspect: tags, fields, outline, working suggestions', () => {
-  const doc = jsondom(data);
+  const doc = jqson(data);
   const r = doc.describe();
   assert.equal(r.elements, doc.size);
   assert.equal(r.tags.text.count, 4);
@@ -48,9 +48,9 @@ test('inspect: tags, fields, outline, working suggestions', () => {
 });
 
 test('cli: help / inspect / explain', () => {
-  const bin = new URL('../bin/jsondom.js', import.meta.url).pathname;
+  const bin = new URL('../bin/jqson.js', import.meta.url).pathname;
   const file = new URL('../examples/video-project.json', import.meta.url).pathname;
-  assert.match(execFileSync('node', [bin, 'help', 'run'], { encoding: 'utf8' }), /jsondom run/);
+  assert.match(execFileSync('node', [bin, 'help', 'run'], { encoding: 'utf8' }), /jqson run/);
   assert.equal(JSON.parse(execFileSync('node', [bin, 'inspect', file])).tags.image.count, 2);
   assert.equal(JSON.parse(execFileSync('node', [bin, 'explain', 'segment > text', file])).count, 4);
 });

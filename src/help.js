@@ -1,4 +1,4 @@
-// 内置文档与自查能力：让安装了 jsondom 的 Agent 不看外部资料也能学会用法、看清数据结构。
+// 内置文档与自查能力：让安装了 jqson 的 Agent 不看外部资料也能学会用法、看清数据结构。
 //
 //   help()                  总览
 //   help('selectors')       某个主题
@@ -15,7 +15,7 @@ import { JsonDoc } from './doc.js';
 
 const API = [
   // 包导出
-  { name: 'jsondom', on: 'module', sig: 'jsondom(data, options?) → JsonDoc', desc: '创建文档。默认深拷贝 data 并建索引，原数据不变。options: typeKey/idKey/classKey/childrenKey 字段名，element: "auto"|"all"|fn，clone，history。', ex: "const doc = jsondom(json, { element: 'auto' })" },
+  { name: 'jqson', on: 'module', sig: 'jqson(data, options?) → JsonDoc', desc: '创建文档。默认深拷贝 data 并建索引，原数据不变。options: typeKey/idKey/classKey/childrenKey 字段名，element: "auto"|"all"|fn，clone，history。', ex: "const doc = jqson(json, { element: 'auto' })" },
   { name: 'runScript', on: 'module', sig: 'runScript(doc, source, { args, policy }) → Promise<{ result, ops, version, conflicts }>', desc: '在 fork 上执行一段脚本，成功才整体合并。脚本内可用 $、doc、args，可 await。Agent 做多步修改的首选方式。', ex: "await runScript(doc, \"$('text').attr('text', args.t); return $('text').length\", { args: { t: 'Hi' } })" },
   { name: 'parallel', on: 'module', sig: 'parallel(doc, tasks, { policy, order, threads, pool }) → Promise<report[]>', desc: '并行执行任务后合并。函数任务 async (fork) => {} 在当前线程跑（适合等模型/网络）；{ script, args } 在 worker 线程跑（适合 CPU 密集）。report: { index, ok, applied, conflicts, error, result }。', ex: "await parallel(doc, [async (f) => f.$('#a').attr('x', 1), { script: \"$('image').attr('opacity', .9)\" }], { policy: 'skip' })" },
   { name: 'createPool', on: 'module', sig: 'createPool({ size }) → Promise<pool>', desc: '创建可复用的 worker 池，传给 parallel({ pool })。用完调用 pool.close()。浏览器用 Web Worker，Node 用 worker_threads。', ex: 'const pool = await createPool({ size: 4 })' },
@@ -73,33 +73,33 @@ const API = [
   { name: 'appendTo', on: '$', sig: 's.appendTo(target, key?)', desc: '把元素移动到 target 下。' },
 
   // 命令行
-  { name: 'cli:help', on: 'cli', sig: 'jsondom help [topic|api] [--json]', desc: '查看内置文档。' },
-  { name: 'cli:inspect', on: 'cli', sig: 'jsondom inspect <file.json> [--depth n] [--limit n]', desc: '输出数据概况 JSON。' },
-  { name: 'cli:explain', on: 'cli', sig: 'jsondom explain "<selector>" [file.json]', desc: '解释选择器；给了文件时附带匹配数和前几个路径。' },
-  { name: 'cli:query', on: 'cli', sig: 'jsondom query <file.json> "<selector>" [--pluck path | --paths | --count]', desc: '查询，输出一行 JSON。' },
-  { name: 'cli:run', on: 'cli', sig: 'jsondom run <file.json> [script.js ...] [-e code ...] [--args json] [--lint a.js,b.js] [--parallel] [--threads n] [--write | --out file] [--patch file]', desc: '执行脚本并原子提交。不加 --write/--out 不写文件，可先试跑。--lint 模块默认导出校验函数或数组。' },
-  { name: 'cli:patch', on: 'cli', sig: 'jsondom patch <file.json> <patch.json> [--write | --out file]', desc: '应用 JSON Patch。' },
+  { name: 'cli:help', on: 'cli', sig: 'jqson help [topic|api] [--json]', desc: '查看内置文档。' },
+  { name: 'cli:inspect', on: 'cli', sig: 'jqson inspect <file.json> [--depth n] [--limit n]', desc: '输出数据概况 JSON。' },
+  { name: 'cli:explain', on: 'cli', sig: 'jqson explain "<selector>" [file.json]', desc: '解释选择器；给了文件时附带匹配数和前几个路径。' },
+  { name: 'cli:query', on: 'cli', sig: 'jqson query <file.json> "<selector>" [--pluck path | --paths | --count]', desc: '查询，输出一行 JSON。' },
+  { name: 'cli:run', on: 'cli', sig: 'jqson run <file.json> [script.js ...] [-e code ...] [--args json] [--lint a.js,b.js] [--parallel] [--threads n] [--write | --out file] [--patch file]', desc: '执行脚本并原子提交。不加 --write/--out 不写文件，可先试跑。--lint 模块默认导出校验函数或数组。' },
+  { name: 'cli:patch', on: 'cli', sig: 'jqson patch <file.json> <patch.json> [--write | --out file]', desc: '应用 JSON Patch。' },
 ];
 
 // ---------- 主题 ----------
 
 const TOPICS = {
   overview: {
-    title: 'jsondom：像操作 DOM 一样操作 JSON',
+    title: 'jqson：jQuery for JSON',
     body: `用 CSS 选择器查找 JSON 中的元素，用 jQuery 式方法修改；所有修改自动维护索引，可事务回滚、校验、撤销，并输出 JSON Patch。支持 fork/merge 与 worker 并行。浏览器和 Node 通用，零依赖。
 
 上手三步：
-  1. 看数据      inspect(doc)              或 jsondom inspect file.json
-  2. 试选择器    explain(sel); doc.$(sel)  或 jsondom explain "<sel>" file.json
-  3. 改          runScript(doc, code)      或 jsondom run file.json -e "<code>"
+  1. 看数据      inspect(doc)              或 jqson inspect file.json
+  2. 试选择器    explain(sel); doc.$(sel)  或 jqson explain "<sel>" file.json
+  3. 改          runScript(doc, code)      或 jqson run file.json -e "<code>"
 
-  import jsondom, { runScript, parallel, help, inspect, explain } from '@youngdro/jsondom';
-  const doc = jsondom(data);
+  import jqson, { runScript, parallel, help, inspect, explain } from 'jqson';
+  const doc = jqson(data);
   doc.$('segment#offer text').attr('text', '立即抢购').addClass('pulse');
   doc.undo();
 
 更多主题：${'TOPICS'}
-查 API：help('attr')、help('merge')；命令行 jsondom help attr`,
+查 API：help('attr')、help('merge')；命令行 jqson help attr`,
   },
   model: {
     title: '数据模型：JSON 如何变成元素树',
@@ -107,7 +107,7 @@ const TOPICS = {
 - 标签（选择器里的 text、segment）：元素的 type 字段；没有 type 时用它所在的属性名，例如 zones.hero 的标签是 hero。根的默认标签是 root。
 - 子元素：元素之下任意深度的对象/数组中遇到的下一层元素，中间的普通对象和数组被“穿透”。所以 children、tracks.main[] 都能当子元素。
 - id、class：id 字段；class 字段（空格分隔字符串或字符串数组）。
-- 字段名可改：jsondom(data, { typeKey: 'kind', idKey: 'uid', classKey: 'tags', childrenKey: 'items' })。
+- 字段名可改：jqson(data, { typeKey: 'kind', idKey: 'uid', classKey: 'tags', childrenKey: 'items' })。
 - 普通（非元素）对象不能被选择器选中，但可通过点路径读写：[style.fontSize>40]、attr('style.color', ...)。`,
   },
   selectors: {
@@ -198,17 +198,17 @@ await parallel(doc, [
 explain(selector)
   → { ok, selector, parts: [...] }，逐段解释；语法错误时 { ok: false, error, position }。
 
-命令行：jsondom inspect file.json；jsondom explain "<sel>" file.json（附匹配数与路径）`,
+命令行：jqson inspect file.json；jqson explain "<sel>" file.json（附匹配数与路径）`,
   },
   cli: {
     title: '命令行',
-    body: `jsondom help [topic|api] [--json]
-jsondom inspect <file.json> [--depth n] [--limit n]
-jsondom explain "<selector>" [file.json]
-jsondom query   <file.json> "<selector>" [--pluck path | --paths | --count]
-jsondom run     <file.json> [script.js ...] [-e code ...] [--args json] [--lint a.js,b.js]
+    body: `jqson help [topic|api] [--json]
+jqson inspect <file.json> [--depth n] [--limit n]
+jqson explain "<selector>" [file.json]
+jqson query   <file.json> "<selector>" [--pluck path | --paths | --count]
+jqson run     <file.json> [script.js ...] [-e code ...] [--args json] [--lint a.js,b.js]
                 [--parallel] [--threads n] [--write | --out file] [--patch file]
-jsondom patch   <file.json> <patch.json> [--write | --out file]
+jqson patch   <file.json> <patch.json> [--write | --out file]
 
 - 除 help 外都输出一行 JSON；失败 ok:false、退出码 1，附 errors（校验）或 conflicts（冲突）。
 - run 不加 --write/--out 不会写文件，可以先试跑看 changes。

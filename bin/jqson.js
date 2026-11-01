@@ -1,20 +1,20 @@
 #!/usr/bin/env node
-// jsondom 命令行：给 Agent 用的“一次脚本、原子提交”入口。
+// jqson 命令行：给 Agent 用的“一次脚本、原子提交”入口。
 //
-//   jsondom help    [topic|api] [--json]
-//   jsondom inspect <file.json> [--depth n] [--limit n]
-//   jsondom explain "<selector>" [file.json]
-//   jsondom query <file.json> <selector> [--pluck path] [--paths] [--count]
-//   jsondom run   <file.json> <script.js ...> [-e code] [--args json] [--lint lint.js]
+//   jqson help    [topic|api] [--json]
+//   jqson inspect <file.json> [--depth n] [--limit n]
+//   jqson explain "<selector>" [file.json]
+//   jqson query <file.json> <selector> [--pluck path] [--paths] [--count]
+//   jqson run   <file.json> <script.js ...> [-e code] [--args json] [--lint lint.js]
 //                 [--parallel] [--threads n] [--write | --out file] [--patch file]
-//   jsondom patch <file.json> <patch.json> [--write | --out file]
+//   jqson patch <file.json> <patch.json> [--write | --out file]
 //
 // 所有命令向 stdout 输出一行 JSON，便于 Agent 解析；失败时 ok 为 false，退出码 1。
 
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { jsondom, runScript, parallel, help, inspect, explain, ValidationError, ConflictError, SelectorError } from '../src/index.js';
+import { jqson, runScript, parallel, help, inspect, explain, ValidationError, ConflictError, SelectorError } from '../src/index.js';
 
 const argv = process.argv.slice(2);
 const cmd = argv.shift();
@@ -45,17 +45,17 @@ function fail(e) {
   if (e instanceof ValidationError) r.errors = e.errors;
   if (e instanceof ConflictError) r.conflicts = e.conflicts;
   r.hint = e instanceof SelectorError
-    ? `jsondom explain "${e.selector}"；jsondom help selectors`
+    ? `jqson explain "${e.selector}"；jqson help selectors`
     : e instanceof ValidationError
       ? '修改未生效。按 errors 调整后重试'
       : e instanceof ConflictError
-        ? '与其他修改冲突，未生效。jsondom help parallel'
-        : 'jsondom help 查看用法';
+        ? '与其他修改冲突，未生效。jqson help parallel'
+        : 'jqson help 查看用法';
   out(r, 1);
 }
 
 function load(file) {
-  return jsondom(JSON.parse(fs.readFileSync(file, 'utf8')));
+  return jqson(JSON.parse(fs.readFileSync(file, 'utf8')));
 }
 
 function save(doc, file, f) {
@@ -85,12 +85,12 @@ try {
     process.exit(0);
   } else if (cmd === 'inspect') {
     const [file] = pos;
-    if (!file) throw new Error('用法: jsondom inspect <file.json> [--depth n] [--limit n]');
+    if (!file) throw new Error('用法: jqson inspect <file.json> [--depth n] [--limit n]');
     const r = inspect(load(file), { depth: f.depth ? Number(f.depth) : undefined, limit: f.limit ? Number(f.limit) : undefined });
     out({ ok: true, ...r, ms: +(performance.now() - t0).toFixed(2) });
   } else if (cmd === 'explain') {
     const [sel, file] = pos;
-    if (!sel) throw new Error('用法: jsondom explain "<selector>" [file.json]');
+    if (!sel) throw new Error('用法: jqson explain "<selector>" [file.json]');
     const r = explain(sel);
     if (r.ok && file) {
       const s = load(file).$(sel);
@@ -145,7 +145,7 @@ try {
     out({ ok: true, saved: save(doc, file, f), ms: +(performance.now() - t0).toFixed(2) });
   } else {
     const near = COMMANDS.filter((c) => c[0] === cmd[0] || c.includes(cmd));
-    out({ ok: false, error: `未知命令 "${cmd}"`, commands: COMMANDS, ...(near.length ? { didYouMean: near } : {}), hint: 'jsondom help' }, 1);
+    out({ ok: false, error: `未知命令 "${cmd}"`, commands: COMMANDS, ...(near.length ? { didYouMean: near } : {}), hint: 'jqson help' }, 1);
   }
 } catch (e) {
   fail(e);

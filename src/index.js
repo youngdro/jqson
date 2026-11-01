@@ -14,9 +14,9 @@ JsonDoc.prototype.describe = function describe(options) {
 };
 JsonDoc.prototype.help = help;
 
-/** 创建文档：const doc = jsondom(json); doc.$('clip.caption').attr('style.color', '#fff') */
-export function jsondom(data, options) {
+/** 创建文档：const doc = jqson(json); doc.$('clip.caption').attr('style.color', '#fff') */
+export function jqson(data, options) {
   return new JsonDoc(data, options);
 }
 
-export default jsondom;
+export default jqson;

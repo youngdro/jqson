@@ -1,15 +1,15 @@
-# jsondom
+# jqson
 
-用 CSS 选择器 + jQuery/DOM 式操作来读写任意 JSON，带事务、校验、撤销、变更流，以及基于 fork/merge 的并行修改。零依赖，同一份代码在**浏览器**和 **Node** 中运行。
+**jQuery for JSON**：用 CSS 选择器和 jQuery 式的链式方法读写任意 JSON，带事务、校验、撤销、变更流，以及基于 fork/merge 的并行修改。零依赖，同一份代码在**浏览器**和 **Node** 中运行。
 
 ```bash
-npm i @youngdro/jsondom      # 命令行名仍为 jsondom：npx jsondom help
+npm i jqson          # 全局安装可直接用命令：npm i -g jqson && jqson help
 ```
 
 ```js
-import jsondom from '@youngdro/jsondom';
+import jqson from 'jqson';
 
-const doc = jsondom(project);                       // 深拷贝一次并建索引
+const doc = jqson(project);                       // 深拷贝一次并建索引
 doc.$('segment#hook text').attr('style.color', '#ff3b30');
 doc.$('text[zone=price-band]').addClass('pulse');
 doc.$('#selling').append({ type: 'image', id: 'detail-3', src: 'c.png', start: 6, duration: 2 });
@@ -21,13 +21,13 @@ doc.undo();
 包内置了全部用法说明和数据探索命令，Agent 安装后可以自己学会怎么用，见 [AGENTS.md](AGENTS.md)。
 
 ```bash
-jsondom help                      # 总览与 API 一览；jsondom help <主题|API名>，--json 输出结构化
-jsondom inspect data.json         # 标签、字段（类型与示例值）、id、class、结构大纲、推荐选择器
-jsondom explain "segment > text[start>=2]" data.json   # 中文解释 + 匹配数 + 路径；语法错误指出位置
+jqson help                      # 总览与 API 一览；jqson help <主题|API名>，--json 输出结构化
+jqson inspect data.json         # 标签、字段（类型与示例值）、id、class、结构大纲、推荐选择器
+jqson explain "segment > text[start>=2]" data.json   # 中文解释 + 匹配数 + 路径；语法错误指出位置
 ```
 
 ```js
-import { help, inspect, explain } from '@youngdro/jsondom';
+import { help, inspect, explain } from 'jqson';
 help('attr');  help.json('parallel');  help.api();
 inspect(doc);  doc.describe();  explain('text:has(> image)');
 ```
@@ -118,7 +118,7 @@ doc.merge(a, { policy: 'throw' | 'skip' | 'force' });
 `parallel(doc, tasks, opts)` 同时跑多个任务，结束后依次合并：
 
 ```js
-import { parallel, createPool } from '@youngdro/jsondom';
+import { parallel, createPool } from 'jqson';
 
 const reports = await parallel(doc, [
   // 函数任务：当前线程、各自 fork，适合等模型/网络（I/O 并发）
@@ -137,7 +137,7 @@ const reports = await parallel(doc, [
 ## 6. 脚本运行器（给 Agent 用）
 
 ```js
-import { runScript } from '@youngdro/jsondom';
+import { runScript } from 'jqson';
 await runScript(doc, `
   const t = $('segment#offer text');
   t.attr('text', args.cta).addClass('pulse');
@@ -150,13 +150,13 @@ await runScript(doc, `
 ## 7. 命令行
 
 ```bash
-jsondom help [主题|API] [--json]
-jsondom inspect examples/video-project.json
-jsondom explain "segment > text" examples/video-project.json
-jsondom query examples/video-project.json "text[zone=caption-band]" --pluck text
-jsondom run   project.json edit.js -e "$('video').attr('muted', true)" --lint examples/video-lint.js --write
-jsondom run   project.json a.js b.js --parallel --threads 4 --patch out.patch.json
-jsondom patch project.json out.patch.json --out next.json
+jqson help [主题|API] [--json]
+jqson inspect examples/video-project.json
+jqson explain "segment > text" examples/video-project.json
+jqson query examples/video-project.json "text[zone=caption-band]" --pluck text
+jqson run   project.json edit.js -e "$('video').attr('muted', true)" --lint examples/video-lint.js --write
+jqson run   project.json a.js b.js --parallel --threads 4 --patch out.patch.json
+jqson patch project.json out.patch.json --out next.json
 ```
 
 输出始终是一行 JSON（`ok`、`count`/`values`、`changes`、`conflicts`、`ms`）；失败时退出码 1，带 `errors`（校验）或 `conflicts`（冲突）。
@@ -165,7 +165,7 @@ jsondom patch project.json out.patch.json --out next.json
 
 ```html
 <script type="module">
-  import jsondom, { parallel } from './jsondom/src/index.js';
+  import jqson, { parallel } from './jqson/src/index.js';
 </script>
 ```
 
@@ -202,6 +202,6 @@ src/parallel.js   parallel()、createPool()
 src/script.js     runScript()、compileScript()
 src/worker.js     浏览器与 Node 共用的 worker 入口
 src/help.js       内置文档 help()、数据概况 inspect()、选择器解释 explain()
-bin/jsondom.js    命令行
+bin/jqson.js    命令行
 examples/         视频工程示例与校验器
 ```
