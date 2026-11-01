@@ -35,6 +35,7 @@ JS 中：`import { help } from 'jqson'; help('attr')`，或 `doc.help('merge')`�
    jqson run data.json edit.js --lint rules.js --write      # 校验不过则整体不生效
    ```
    JS 中用 `await runScript(doc, code, { args })`，同样原子执行。
+   只读查询用 `jqson query data.json "<sel>" --pluck text`（或 `--paths` / `--count`）；回放补丁用 `jqson patch data.json p.json --out next.json`。
 4. **读结果**：CLI 除 help 外都输出一行 JSON；`ok:false` 时看 `errors`（校验）、`conflicts`（冲突）和 `hint`（下一步查什么）。
 
 ## 4. 速记
@@ -44,11 +45,14 @@ JS 中：`import { help } from 'jqson'; help('attr')`，或 `doc.help('merge')`�
 - 修改：`attr(path, value | fn)` `set` `merge` `removeAttr` `addClass/removeClass/toggleClass` `append/prepend/before/after/insert` `remove/replaceWith/empty/appendTo`。写法和 jQuery 一致，path 支持点路径。
 - 多步修改放进 `doc.transaction(fn)` 或一段脚本；`doc.use(validator)` 加校验；`doc.undo()` 撤销。
 - 并行：`parallel(doc, tasks, { policy: 'skip' })`。等模型或网络的任务写成 `async (fork) => {}`，CPU 密集的写成 `{ script, args }` 交给 worker。让各任务改不同 id 的子树，避免冲突。
+- 合并按最近的唯一 id 祖先锚定，兄弟增删不会错位。冲突 = 同路径或前缀路径、修改了对方删除的子树；同一数组双方追加不算冲突。多次并行时传 `pool: await createPool({ size })` 复用线程。
+- 规模参考：2000 元素时查询约 1ms、8 个 worker 任务约 170ms；10 万元素时 fork 约 0.35s，并行主要耗在数据复制。
 
 ## 5. 不要
 
 - 不要直接给 `doc.root` 下的对象赋值，否则索引和撤销会失效。改动一律走 Selection 方法或 `doc.set`。
 - 在 shell 里写 `-e` 代码时用单引号包住整段，避免 `$` 被 shell 展开。
+- 用 worker 跑脚本任务时，`element` 选项不能是函数。
 - 不要逐个元素多次调用 CLI；一段脚本完成全部修改更快，也是原子的。
 
 ## 6. 维护
