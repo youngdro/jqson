@@ -1,0 +1,53 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>jqson browser smoke test</title>
+<script type="module">
+  import jqson, { parallel, createPool, runScript, help, explain, applyPatchTo } from '/src/index.js';
+
+  const results = [];
+  const check = (name, ok, detail) => results.push({ name, ok: !!ok, detail });
+
+  try {
+    const data = await (await fetch('/examples/video-project.json')).json();
+
+    const doc = jqson(data);
+    check('selectors', doc.$('segment#selling > text').pluck('id').join() === 'point-1,point-2');
+    doc.$('text').attr('start', (i, v) => v + 1).addClass('w');
+    check('jquery callbacks', doc.get('#hook-title').start === 1.2 && doc.$('.w').length === 4);
+    doc.$('#cta-text').clone().attr('id', 'c2').insertAfter('#price-tag');
+    check('clone + insertAfter', doc.$('#offer').children().pluck('id').join() === 'price-tag,c2,cta-text');
+    doc.$('#point-1, #point-2').wrapAll({ type: 'group', id: 'g' });
+    check('wrapAll', doc.$('#g > text').length === 2);
+    while (doc.undo());
+    check('undo all', JSON.stringify(doc.toJSON()) === JSON.stringify(data));
+
+    const im = jqson(data, { mode: 'immutable' });
+    const s0 = im.state;
+    im.$('#point-1').text('x');
+    const s1 = im.state;
+    check('immutable sharing', s0 === data && s1 !== s0 && s1.children[0] === s0.children[0]);
+
+    const pool = await createPool({ size: 2 });
+    const reports = await parallel(doc, [
+      { script: "$('text').addClass('a')" },
+      { script: "$('image').attr('opacity', args.o)", args: { o: 0.5 } },
+      async (f) => f.$('video').attr('muted', true),
+    ], { pool });
+    pool.close();
+    check('web worker parallel', reports.every((r) => r.ok && r.applied) && doc.$('text.a').length === 4 && doc.$('image[opacity=0.5]').length === 2 && doc.$('video[muted=true]').length === 1,
+      reports.map((r) => r.error?.message));
+
+    const r = await runScript(doc, "return $('text').length");
+    check('runScript', r.result === 4);
+
+    const store = JSON.parse(JSON.stringify(doc.toJSON()));
+    doc.syncTo(store);
+    doc.$('#hook-title').text('同步');
+    check('syncTo', store.children[0].children[1].text === '同步');
+    check('applyPatchTo', applyPatchTo({ a: 1 }, [{ op: 'replace', path: '/a', value: 2 }]).a === 2);
+    check('help / explain', help('attr').includes('attr') && explain('text[').ok === false);
+  } catch (e) {
+    check('uncaught', false, e.stack || String(e));
+  }
+  window.__results = results;
+</script>

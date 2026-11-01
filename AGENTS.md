@@ -18,7 +18,8 @@ npx jqson explain "<sel>" data.json   # 解释选择器，返回匹配数和路�
 
 1. `inspect` 看结构，确认标签和字段名。
 2. `explain` / `query --count` 确认选择器选中了想要的元素。
-3. 用一段脚本完成全部修改：`jqson run data.json -e '<code>'`（先不加 `--write` 试跑，看 `changes`），或 `runScript(doc, code, { args })`。脚本原子执行，失败不留改动。
+3. 用一批声明式指令完成全部修改（不执行代码，首选）：`jqson exec data.json cmds.json --dry-run` 预览，确认后 `--write`；代码里 `doc.exec(commands)`。格式见 `jqson help exec`，工具调用参数定义见 `jqson schema`。
+   exec 表达不了时再用 JSON Patch（`jqson patch`），最后才是脚本（`jqson run` / `runScript`，没有沙箱，只在可信环境用）。
 4. 有校验规则时加 `--lint rules.js`；需要并行就用 `parallel()`，各任务改不同 id 的子树。
 
 ## 规则

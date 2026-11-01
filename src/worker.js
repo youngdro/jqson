@@ -38,6 +38,7 @@ const isBrowserWorker = typeof self !== 'undefined' && typeof self.postMessage =
 if (isBrowserWorker) {
   self.onmessage = async (e) => self.postMessage(await handle(e.data));
 } else {
-  const { parentPort } = await import(/* @vite-ignore */ 'node:worker_threads');
+  const mod = 'node:worker_threads';
+  const { parentPort } = await import(/* webpackIgnore: true */ /* @vite-ignore */ mod);
   parentPort.on('message', async (msg) => parentPort.postMessage(await handle(msg)));
 }

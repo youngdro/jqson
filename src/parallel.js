@@ -8,6 +8,12 @@
 import { JsonDoc, ConflictError } from './doc.js';
 import { runScript } from './script.js';
 
+// 用变量而不是字面量，打包器就不会去解析 Node 专用模块
+const NODE_WORKER_MODULE = 'node:worker_threads';
+const WORKER_FILE = './worker.js';
+const MODULE_URL = import.meta.url;
+const WORKER_LOAD_HINT =
+  'worker error: worker 线程加载或运行失败。用 Vite 开发服务器时，需在 vite.config 中设置 optimizeDeps: { exclude: [\'jqson\'] }，见 README“在打包器中使用”';
 const isNode = typeof process !== 'undefined' && !!process.versions?.node && typeof window === 'undefined';
 
 export function defaultThreads() {
@@ -79,9 +85,8 @@ function serializableOptions(o) {
 /** 创建 worker 池。worker 会缓存最近一次收到的文档快照，同一版本只传一次。 */
 export async function createPool({ size } = {}) {
   size = Math.max(1, size || defaultThreads());
-  const url = new URL('./worker.js', import.meta.url);
   let NodeWorker = null;
-  if (isNode) NodeWorker = (await import(/* @vite-ignore */ 'node:worker_threads')).Worker;
+  if (isNode) NodeWorker = (await import(/* webpackIgnore: true */ /* @vite-ignore */ NODE_WORKER_MODULE)).Worker;
 
   const workers = [];
   const idle = [];
@@ -89,7 +94,11 @@ export async function createPool({ size } = {}) {
   let seq = 0;
 
   for (let i = 0; i < size; i++) {
-    const w = NodeWorker ? new NodeWorker(url) : new Worker(url, { type: 'module' });
+    // 浏览器分支必须写成 new Worker(new URL('./worker.js', import.meta.url), ...) 这一字面形式，
+    // Vite / webpack 5 / Rollup 才能识别并把 worker 及其依赖单独打包
+    const w = NodeWorker
+      ? new NodeWorker(new URL(WORKER_FILE, MODULE_URL))
+      : new Worker(new URL('./worker.js', import.meta.url), { type: 'module' });
     const slot = { w, cachedKey: null, job: null };
     const onMessage = (msg) => {
       const job = slot.job;
@@ -108,7 +117,7 @@ export async function createPool({ size } = {}) {
     const onError = (e) => {
       const job = slot.job;
       slot.job = null;
-      if (job) job.resolve({ ok: false, error: e instanceof Error ? e : new Error(e?.message || 'worker error') });
+      if (job) job.resolve({ ok: false, error: e instanceof Error ? e : new Error(e?.message || WORKER_LOAD_HINT) });
     };
     if (NodeWorker) {
       w.on('message', onMessage);

@@ -1,5 +1,7 @@
 # jqson
 
+中文 | [English](README.en.md)
+
 **jQuery for JSON**：用 CSS 选择器和 jQuery 式的链式方法读写任意 JSON，带事务、校验、撤销、变更流，以及基于 fork/merge 的并行修改。零依赖，同一份代码在**浏览器**和 **Node** 中运行。
 
 ```bash
@@ -184,18 +186,101 @@ const reports = await parallel(doc, [
 - 反复调用时传入 `pool: await createPool({ size })` 复用线程；worker 会缓存同一版本的文档，只传一次数据。
 - 脚本任务的 `doc.options.element` 不能是函数（无法跨线程）。
 
-## 6. 脚本运行器（给 Agent 用）
+## 6. 给 Agent 的三种用法
+
+按安全性排序。**能用声明式指令表达就用它**；要和别的系统交换改动用 JSON Patch；只有前两种表达不了、且代码来源可信时才用脚本。三种方式都整体原子执行，都可以加校验器，失败都不会留下改动。
+
+| 方式 | 执行代码 | 灵活度 | 适合 |
+|---|---|---|---|
+| 声明式指令 `exec` | 否，纯 JSON，方法白名单 | 覆盖绝大多数编辑 | 默认选择；工具调用（function calling） |
+| JSON Patch `patch` | 否 | 只能按路径改 | 与其他系统交换改动、逐条审核 |
+| 脚本 `run` / `runScript` | **是，没有沙箱** | 任意逻辑 | 可信环境里的复杂计算 |
+
+### 6.1 声明式指令 exec（推荐）
+
+每条指令用 `"$"` 选中元素，`"expect"` 断言数量，再写要调用的方法和参数（参数只能是 JSON）：
+
+```json
+[
+  { "$": "lottie[zone=price-band]", "expect": 1, "attr": ["fields.price", "¥29"] },
+  { "$": "text.caption", "css": { "fontSize": { "$mul": 1.1, "$round": 0 } } },
+  { "$": "#point-1", "do": [["text", { "$suffix": "！" }], ["addClass", "hl"]] },
+  { "$": { "type": "image", "id": "logo", "src": "logo.png" }, "insertAfter": "#hero-shot" },
+  { "$": "#point-1, #point-2", "wrapAll": { "type": "group", "id": "g1" } },
+  { "$": "#selling > image", "remove": true },
+  { "$": "segment", "pluck": "id" }
+]
+```
+
+- 简写：键是方法名，值是参数。数组表示参数列表，`true` 表示无参数，其他值表示唯一参数；要传一个数组作为唯一参数，写成 `[[...]]`。
+- 链式：`"do": [["find", "> text"], ["attr", "start", 1], ["addClass", "a"]]`，按顺序执行。
+- 按旧值计算：值运算 `{"$add": n}` `{"$mul": n}` `{"$round": 位数}` `{"$prefix": s}` `{"$suffix": s}` `{"$replace": [旧, 新]}` `{"$default": v}`，可以组合。
+- 读取：`pluck` `count` `paths` `json` `index` `is` `hasClass`，以及 `"attr": "path"`、`"text": []` 这类只读调用，结果放在 `results[i].value`。
+- 不允许：`each` / `map` 等需要函数的方法、未知方法、未知的 `$` 运算，都会报错并指出第几条。
+
+```bash
+jqson exec project.json cmds.json --dry-run          # 先预览补丁
+jqson exec project.json cmds.json --lint rules.js --write
+echo '[{"$":"#hook","attr":["x",1]}]' | jqson exec project.json -
+jqson schema                                          # JSON Schema，直接作为工具调用的参数定义
+```
+
+```js
+const { results, patch } = doc.exec(commands, { dryRun: true });
+import { execSchema } from 'jqson';   // 交给模型的工具定义
+```
+
+**案例：商品视频批量改价并突出卖点**
+
+```json
+[
+  { "$": "lottie#price-tag", "expect": 1, "attr": { "fields.price": "¥29", "fields.was": "¥59" } },
+  { "$": "#offer > text", "expect": 1, "do": [["text", "限时 ¥29"], ["addClass", "pulse"]] },
+  { "$": "#selling > text", "expect": 2, "css": { "color": "#ffe14d" }, "attr": ["motion.preset", "pop-in"] },
+  { "$": "#offer > *", "attr": ["start", { "$add": 0.5 }] }
+]
+```
+
+**案例：给每段开头加转场，并把重复的卖点编组**
+
+```json
+[
+  { "$": "segment", "expect": 3, "prepend": { "type": "lottie", "src": "presets/wipe.json", "start": 0, "duration": 0.3 } },
+  { "$": "#detail-1, #point-1", "wrapAll": { "type": "group", "id": "sp-1" } }
+]
+```
+
+### 6.2 JSON Patch
+
+标准 RFC 6902 格式。先用 `jqson query <file> <sel> --paths` 拿到路径，再生成补丁：
+
+```bash
+jqson query project.json "#point-1" --paths      # → ["/children/1/children/1"]
+jqson patch project.json changes.json --out next.json
+```
+
+```json
+[{ "op": "replace", "path": "/children/1/children/1/text", "value": "零糖" }]
+```
+
+每次提交的改动也能通过 `doc.on(e => e.patch)` 或 `--patch out.json` 拿到，用来审核、回放或同步给其他系统。
+
+### 6.3 脚本（仅限可信环境）
 
 ```js
 import { runScript } from 'jqson';
 await runScript(doc, `
-  const t = $('segment#offer text');
-  t.attr('text', args.cta).addClass('pulse');
-  return t.length;
-`, { args: { cta: '立即抢购' } });   // 在 fork 上运行，成功才整体合并（原子）
+  for (const seg of $('segment')) {
+    const texts = $(seg).find('text');
+    texts.attr('start', (i, v) => +(v + i * 0.1).toFixed(2));
+  }
+  return $('text').length;
+`, { args: {} });   // 在 fork 上运行，成功才整体合并（原子）
 ```
 
-脚本中可用 `$`、`doc`、`args`，可以 `await`。Agent 只需写一段短代码，比逐个调工具快得多，且失败零副作用。
+脚本中可用 `$`、`doc`、`args`，可以 `await`，适合需要循环、条件判断、复杂计算的场景。
+
+> **安全提示**：`runScript`、`parallel` 的脚本任务和命令行 `jqson run` 执行的是任意 JavaScript，**没有沙箱**，权限与当前进程（或 worker）相同，可以读写文件、访问网络。只运行你信任的代码，例如你自己的 Agent 在受控环境中生成的脚本；不要直接执行来自用户输入或第三方的代码。需要隔离时，把它放进容器、受限的子进程或浏览器 iframe 中运行。
 
 ## 7. 命令行
 
@@ -204,14 +289,16 @@ jqson help [主题|API] [--json]
 jqson inspect examples/video-project.json
 jqson explain "segment > text" examples/video-project.json
 jqson query examples/video-project.json "text[zone=caption-band]" --pluck text
+jqson exec  project.json cmds.json [--ops json] [--dry-run] [--lint rules.js] [--write | --out file] [--patch file]
+jqson schema
 jqson run   project.json edit.js -e "$('video').attr('muted', true)" --lint examples/video-lint.js --write
 jqson run   project.json a.js b.js --parallel --threads 4 --patch out.patch.json
 jqson patch project.json out.patch.json --out next.json
 ```
 
-输出始终是一行 JSON（`ok`、`count`/`values`、`changes`、`conflicts`、`ms`）；失败时退出码 1，带 `errors`（校验）或 `conflicts`（冲突）。
+输出始终是一行 JSON（`ok`、`count`/`values`、`changes`、`conflicts`、`ms`）；失败时退出码 1，带 `errors`（校验）、`conflicts`（冲突）或 `command`（exec 中出错的指令序号），以及 `hint`（下一步查什么）。
 
-## 8. 在浏览器里用
+## 8. 在浏览器和打包器里用
 
 ```html
 <script type="module">
@@ -219,29 +306,38 @@ jqson patch project.json out.patch.json --out next.json
 </script>
 ```
 
-源码是纯 ESM。打包器（Vite/webpack 5/Rollup）能识别 `new URL('./worker.js', import.meta.url)`，会自动打出 worker 文件。Node 专用模块只在 Node 分支里动态导入，浏览器不会加载。已在 Chromium 中验证：查询、修改、Web Worker 并行脚本、函数任务、合并与撤销。
+源码是纯 ESM，Node 专用模块只在 Node 分支里动态导入，浏览器不会加载。worker 用 `new Worker(new URL('./worker.js', import.meta.url), { type: 'module' })` 创建，打包器会把它和依赖单独打成一个文件：
+
+- **Vite**：`vite build` 不用配置。开发服务器会预构建依赖，导致找不到 worker 文件，需要排除：
+  ```js
+  // vite.config.js
+  export default { optimizeDeps: { exclude: ['jqson'] } };
+  ```
+- **webpack 5**：不用配置。入口里用了顶层 await 的话打开 `experiments.topLevelAwait`（webpack 5.83 起默认开启）。
+
+以上三种情况（Vite build、Vite dev、webpack 5 build）都在 Chromium 中实测过并行脚本任务，`npm run test:bundlers` 可复现。不用 worker 的功能（查询、修改、exec、事务、函数任务）不受打包方式影响。
 
 ## 9. 性能（Node 22，单机）
 
 | 操作 | 2,000 元素 | 100,000 元素 |
 |---|---|---|
-| 建文档（深拷贝 + 建索引） | 7.8 ms | 317 ms |
-| `#id` 查询 | 0.02 ms | 0.04 ms |
-| `.class` 查询 | 0.4 ms | 18 ms |
-| `text[style.fontSize>55]`（全量扫描） | 1.3 ms | 25 ms |
-| `#s42 > .caption[motion.preset=pulse]` | <0.01 ms | 0.6 ms |
-| 单事务批量改属性 | 400 个 1.9 ms | 20,000 个 86 ms |
-| fork | 6 ms | 354 ms |
-| 合并改了 500 个元素的 fork | 42 ms | 470 ms |
-| 8 个 worker 脚本任务（4 线程，含传输与合并） | 171 ms | 3.8 s |
+| 建文档（深拷贝 + 建索引） | 8 ms | 280 ms |
+| `#id` 查询 | 0.03 ms | 0.04 ms |
+| `.class` 查询 | 0.6 ms | 15 ms |
+| `text[style.fontSize>55]`（全量扫描） | 1.4 ms | 13 ms |
+| `#s42 > .caption[motion.preset=pulse]` | <0.01 ms | 0.5 ms |
+| 单事务批量改属性 | 400 个 2 ms | 20,000 个 75 ms |
+| fork | 5 ms | 280 ms |
+| 合并改了 500 个元素的 fork | 26 ms | 316 ms |
+| 8 个 worker 脚本任务（4 线程，含传输与合并） | 155 ms | 3.7 s |
 
 说明：
 
-- 带索引的查询（id、class、`#id` 开头）很快；属性扫描约为手写 JS 循环的 8–10 倍开销，换来的是可读的选择器和自动索引。
+- 带索引的查询（id、class、`#id` 开头）很快；属性扫描约为手写 JS 循环的 6–7 倍开销，换来的是可读的选择器和自动索引。
 - 大文档上 fork 和 worker 并行的主要成本是**复制数据**（深拷贝或跨线程结构化克隆）。商品视频工程一般几百到几千个元素，这个规模上并行开销在百毫秒级。
 - 等模型返回这类 I/O 任务用函数任务就够了，不用 worker；只有 CPU 密集的批量改写才值得进 worker。
 
-运行：`npm test`（34 个用例），`npm run bench [段数] [每段元素数]`。
+运行：`npm test`、`npm run test:browser`、`npm run test:bundlers`、`npm run typecheck`、`npm run bench [段数] [每段元素数]`。
 
 ## 10. 文件
 
@@ -252,9 +348,15 @@ src/parallel.js   parallel()、createPool()
 src/script.js     runScript()、compileScript()
 src/worker.js     浏览器与 Node 共用的 worker 入口
 src/help.js       内置文档 help()、数据概况 inspect()、选择器解释 explain()
+src/exec.js       exec()：声明式指令与 JSON Schema
 src/sync.js       syncTo()、applyPatchTo()：同步到 Vue / MobX 等响应式数据
 bin/jqson.js      命令行
+types/            TypeScript 类型声明
 skills/jqson/     随包附带的 Agent skill
 examples/         视频工程示例与校验器
 docs/             jQuery 对照表等文档
 ```
+
+## 许可
+
+MIT

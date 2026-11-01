@@ -19,6 +19,8 @@ const API = [
   { name: 'syncTo', on: 'module', sig: 'doc.syncTo(target, { batch? }) → unsubscribe；syncTo(doc, target, opts)', desc: '每次提交后把改动（JSON Patch）逐字段应用到外部的响应式对象（Vue reactive、MobX observable 等）。观察者只看到提交后的结果，不会看到事务中间状态。MobX 传 batch: runInAction。', ex: 'doc.syncTo(store, { batch: runInAction })' },
   { name: 'applyPatchTo', on: 'module', sig: 'applyPatchTo(target, patch) → target', desc: '把 JSON Patch 原地应用到任意对象（逐字段修改，适合代理对象）。' },
   { name: 'fn', on: 'module', sig: 'jqson.fn.name = function (...) { return this }', desc: '插件扩展点，同 jQuery.fn（即 Selection.prototype）。', ex: "jqson.fn.shift = function (dt) { return this.attr('start', (i, v) => v + dt) }" },
+  { name: 'exec', on: 'module', sig: 'doc.exec(commands, { dryRun? }) → { results, patch, version, applied }；exec(doc, commands, opts)', desc: '执行一批声明式指令（纯 JSON，不执行代码），整体原子。每条 { "$": 选择器, "expect": 数量, 方法: 参数, "do": [["方法", ...参数]] }。值运算 {"$add"} {"$mul"} {"$round"} {"$prefix"} {"$suffix"} {"$replace"} {"$default"}。给 Agent 的首选方式。', ex: `doc.exec([{ $: 'text.caption', expect: 4, css: { fontSize: { $mul: 1.1, $round: 0 } } }])` },
+  { name: 'execSchema', on: 'module', sig: 'execSchema / jqson schema', desc: 'exec 指令的 JSON Schema，可直接作为 Agent 工具调用（function calling）的参数定义。' },
   { name: 'runScript', on: 'module', sig: 'runScript(doc, source, { args, policy }) → Promise<{ result, ops, version, conflicts }>', desc: '在 fork 上执行一段脚本，成功才整体合并。脚本内可用 $、doc、args，可 await。Agent 做多步修改的首选方式。', ex: "await runScript(doc, \"$('text').attr('text', args.t); return $('text').length\", { args: { t: 'Hi' } })" },
   { name: 'parallel', on: 'module', sig: 'parallel(doc, tasks, { policy, order, threads, pool }) → Promise<report[]>', desc: '并行执行任务后合并。函数任务 async (fork) => {} 在当前线程跑（适合等模型/网络）；{ script, args } 在 worker 线程跑（适合 CPU 密集）。report: { index, ok, applied, conflicts, error, result }。', ex: "await parallel(doc, [async (f) => f.$('#a').attr('x', 1), { script: \"$('image').attr('opacity', .9)\" }], { policy: 'skip' })" },
   { name: 'createPool', on: 'module', sig: 'createPool({ size }) → Promise<pool>', desc: '创建可复用的 worker 池，传给 parallel({ pool })。用完调用 pool.close()。浏览器用 Web Worker，Node 用 worker_threads。', ex: 'const pool = await createPool({ size: 4 })' },
@@ -95,6 +97,8 @@ const API = [
   { name: 'cli:skill', on: 'cli', sig: 'jqson skill [--json]', desc: '输出随包附带的 Agent skill（SKILL.md）；--json 只给出文件路径。安装到项目：mkdir -p .claude/skills/jqson && jqson skill > .claude/skills/jqson/SKILL.md' },
   { name: 'cli:inspect', on: 'cli', sig: 'jqson inspect <file.json> [--depth n] [--limit n]', desc: '输出数据概况 JSON。' },
   { name: 'cli:explain', on: 'cli', sig: 'jqson explain "<selector>" [file.json]', desc: '解释选择器；给了文件时附带匹配数和前几个路径。' },
+  { name: 'cli:exec', on: 'cli', sig: 'jqson exec <file.json> <commands.json | -> [--ops json] [--lint a.js] [--dry-run] [--write | --out file] [--patch file]', desc: '执行声明式指令（不执行代码），整体原子；--dry-run 只预览补丁。失败时返回第几条指令出错。' },
+  { name: 'cli:schema', on: 'cli', sig: 'jqson schema', desc: '输出 exec 指令的 JSON Schema。' },
   { name: 'cli:query', on: 'cli', sig: 'jqson query <file.json> "<selector>" [--pluck path | --paths | --count]', desc: '查询，输出一行 JSON。' },
   { name: 'cli:run', on: 'cli', sig: 'jqson run <file.json> [script.js ...] [-e code ...] [--args json] [--lint a.js,b.js] [--parallel] [--threads n] [--write | --out file] [--patch file]', desc: '执行脚本并原子提交。不加 --write/--out 不写文件，可先试跑。--lint 模块默认导出校验函数或数组。' },
   { name: 'cli:patch', on: 'cli', sig: 'jqson patch <file.json> <patch.json> [--write | --out file]', desc: '应用 JSON Patch。' },
@@ -110,7 +114,7 @@ const TOPICS = {
 上手三步：
   1. 看数据      inspect(doc)              或 jqson inspect file.json
   2. 试选择器    explain(sel); doc.$(sel)  或 jqson explain "<sel>" file.json
-  3. 改          runScript(doc, code)      或 jqson run file.json -e "<code>"
+  3. 改          doc.exec(commands)        或 jqson exec file.json --ops '<json>'（不执行代码，推荐）
 
   import jqson, { runScript, parallel, help, inspect, explain } from 'jqson';
   const doc = jqson(data);
@@ -196,6 +200,30 @@ const TOPICS = {
              适合 React / Vue 等按引用比较的框架，组件可以精确重渲染。freeze: true 时冻结新对象。
 doc.snapshot() / doc.state 在任何模式下都能用；toJSON() 始终返回完整深拷贝。`,
   },
+  agent: {
+    title: '给 Agent 的三种用法（按安全性排序）',
+    body: `1. 声明式指令 exec（推荐，默认用它）
+   纯 JSON，不执行任何代码；只能调用白名单方法；整批原子执行；expect 断言防止选错。
+     jqson exec project.json --dry-run --ops '[
+       {"$": "lottie[zone=price-band]", "expect": 1, "attr": ["fields.price", "¥29"]},
+       {"$": "text.caption", "css": {"fontSize": {"$mul": 1.1, "$round": 0}}},
+       {"$": {"type": "image", "id": "logo", "src": "logo.png"}, "insertAfter": "#hero-shot"},
+       {"$": "#point-1, #point-2", "wrapAll": {"type": "group", "id": "g1"}}
+     ]'
+   确认 patch 合理后去掉 --dry-run、加 --write。代码里：doc.exec(commands, { dryRun })。
+   工具调用：jqson schema 输出 JSON Schema，直接当作 function 参数定义。
+
+2. JSON Patch（RFC 6902）
+   通用标准格式，适合已有系统或需要逐条审核改动的场景。路径先用 jqson query <file> <sel> --paths 拿到。
+     jqson patch project.json changes.json --out next.json
+
+3. 脚本 run / runScript（最灵活，只在可信环境用）
+   任意 JavaScript，没有沙箱。适合需要循环、条件、复杂计算，且代码来源可信的场景。
+     jqson run project.json -e '$("text").each((i, el) => { ... })'
+
+选择：能用 exec 表达就用 exec；需要和别的系统交换改动用 patch；只有 exec 表达不了时才用脚本。
+三种方式都可以加 --lint 校验，失败都不会留下改动。`,
+  },
   reactive: {
     title: '配合 Vue / MobX 等响应式数据',
     body: `两种接法，推荐第一种：
@@ -261,7 +289,8 @@ await parallel(doc, [
 - 让并行任务各改不同 id 的子树可避免冲突。
 - worker 需要复制数据，大文档上主要开销在这里；等模型返回只用函数任务即可。
 - 反复调用请传 pool: await createPool({ size })，用完 pool.close()。
-- 脚本任务时 options.element 不能是函数。`,
+- 脚本任务时 options.element 不能是函数。
+- 打包器：Vite build、webpack 5 无需配置；Vite 开发服务器需 optimizeDeps: { exclude: ['jqson'] }。`,
   },
   script: {
     title: '脚本：给 Agent 的一次性原子修改',
@@ -269,6 +298,7 @@ await parallel(doc, [
 - 脚本内可用 $（等同 doc.$）、doc、args，可以 await，可以 return 结果。
 - 在 fork 上执行，全部成功才合并；任何抛错、校验失败都不会留下修改。
 - 一段脚本完成多步修改，比一次次调用工具快得多。
+- 安全：脚本是任意 JavaScript，没有沙箱，权限与当前进程相同。只运行可信代码，不要直接执行用户输入或第三方代码。
 
   await runScript(doc, \`
     const t = $('segment#offer text');

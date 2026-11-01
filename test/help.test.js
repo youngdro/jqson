@@ -74,3 +74,11 @@ test('help 里的 recipes 都能直接运行', async () => {
   assert.equal(doc.$('#selling-2').length, 1);
   assert.equal(doc.get('#cta-text').start, 8.6);
 });
+
+test("help('agent') 里的 exec 示例能直接执行", () => {
+  const body = help.json('agent').body;
+  const ops = JSON.parse(body.slice(body.indexOf("--ops '") + 7, body.indexOf("'", body.indexOf("--ops '") + 7)));
+  const doc = jqson(data);
+  const r = doc.exec(ops, { dryRun: true });
+  assert.ok(r.patch.length > 0);
+});

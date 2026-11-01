@@ -586,10 +586,32 @@ export class JsonDoc {
   _order() {
     if (this._orderCache && this._orderCache.v === this._struct) return this._orderCache.map;
     const map = new WeakMap();
-    let i = 0;
-    this._walk(this.root, (n) => map.set(n, i++));
-    this._orderCache = { v: this._struct, map };
+    const list = [];
+    this._walk(this.root, (n) => {
+      map.set(n, list.length);
+      list.push(n);
+    });
+    this._orderCache = { v: this._struct, map, list };
     return map;
+  }
+
+  // 按文档顺序排序：结果占全文比例高时直接按顺序表过滤（O(N)），否则取一次序号再排数字
+  _inDocOrder(nodes, set) {
+    if (nodes.length < 2) return nodes;
+    const order = this._order();
+    const { list } = this._orderCache;
+    if (nodes.length * 8 > list.length) {
+      const has = set || new Set(nodes);
+      const out = [];
+      for (const n of list) if (has.has(n)) out.push(n);
+      return out;
+    }
+    const keys = new Float64Array(nodes.length);
+    for (let i = 0; i < nodes.length; i++) keys[i] = order.get(nodes[i]) * 4194304 + i;
+    keys.sort();
+    const out = new Array(nodes.length);
+    for (let i = 0; i < keys.length; i++) out[i] = nodes[keys[i] % 4194304];
+    return out;
   }
 
   // 按文档顺序遍历 start 及其后代元素；fn 返回 false 时停止
@@ -660,17 +682,17 @@ export class JsonDoc {
         };
         if (scopes) for (const s of scopes) this._walk(s, visit, false);
         else if (idRoots) for (const s of idRoots) this._walk(s, visit, false);
-        else this._walk(this.root, visit);
+        else {
+          // 全文扫描：用缓存的文档顺序表，免去逐层取子元素
+          this._order();
+          for (const n of this._orderCache.list) if (visit(n) === false) break;
+        }
         if (idRoots && idRoots.length > 1) needSort = true;
         if (list.length > 1) needSort = true;
       }
     }
     const arr = [...out];
-    if (needSort && arr.length > 1) {
-      const order = this._order();
-      arr.sort((a, b) => order.get(a) - order.get(b));
-    }
-    return arr;
+    return needSort ? this._inDocOrder(arr, out) : arr;
   }
 
   _matchScoped(n, cx, scopes) {
@@ -1587,9 +1609,7 @@ function removeFrom(map, key, n) {
 
 function uniqueInOrder(doc, nodes) {
   const seen = new Set(nodes);
-  if (seen.size < 2) return [...seen];
-  const order = doc._order();
-  return [...seen].sort((a, b) => order.get(a) - order.get(b));
+  return doc._inDocOrder([...seen], seen);
 }
 
 export function getPath(obj, segs) {
@@ -1614,49 +1634,60 @@ function setPath(doc, node, segs, value) {
   else doc._set(c, last, value);
 }
 
+const isPrim = (x) => x !== undefined && x !== null && !isObj(x);
+const normAttr = (a, x) => (a.insensitive ? String(x).toLowerCase() : String(x));
+
+function attrEq(a, x) {
+  if (a.typed) {
+    if (typeof a.value === 'number') return (typeof x === 'number' || (typeof x === 'string' && x !== '')) && Number(x) === a.value;
+    return x === a.value;
+  }
+  return isPrim(x) && normAttr(a, x) === a.value;
+}
+
+function attrAny(a, v) {
+  if (!Array.isArray(v)) return attrEq(a, v);
+  for (const x of v) if (attrEq(a, x)) return true;
+  return false;
+}
+
 function matchAttr(n, a) {
   const v = getPath(n, a.path);
   if (!a.op) return v !== undefined;
-  const norm = (x) => {
-    const s = String(x);
-    return a.insensitive ? s.toLowerCase() : s;
-  };
-  const prim = (x) => x !== undefined && !isObj(x);
-  const eq = (x) => {
-    if (a.typed) {
-      if (typeof a.value === 'number') return (typeof x === 'number' || (typeof x === 'string' && x !== '')) && Number(x) === a.value;
-      return x === a.value;
-    }
-    return prim(x) && x !== null && norm(x) === a.value;
-  };
-  const val = typeof a.value === 'string' ? a.value : String(a.value);
   switch (a.op) {
     case '=':
-      return Array.isArray(v) ? v.some(eq) : eq(v);
+      return attrAny(a, v);
     case '!=':
-      return !(Array.isArray(v) ? v.some(eq) : eq(v));
+      return !attrAny(a, v);
     case '^=':
-      return prim(v) && v !== null && norm(v).startsWith(val);
+      return isPrim(v) && normAttr(a, v).startsWith(String(a.value));
     case '$=':
-      return prim(v) && v !== null && norm(v).endsWith(val);
+      return isPrim(v) && normAttr(a, v).endsWith(String(a.value));
     case '*=':
-      return prim(v) && v !== null && norm(v).includes(val);
+      return isPrim(v) && normAttr(a, v).includes(String(a.value));
     case '~=':
-      if (Array.isArray(v)) return v.some(eq);
-      return typeof v === 'string' && norm(v).split(/\s+/).includes(val);
-    case '|=':
-      return prim(v) && v !== null && (norm(v) === val || norm(v).startsWith(val + '-'));
+      if (Array.isArray(v)) return attrAny(a, v);
+      return typeof v === 'string' && normAttr(a, v).split(/\s+/).includes(String(a.value));
+    case '|=': {
+      if (!isPrim(v)) return false;
+      const s = normAttr(a, v);
+      const val = String(a.value);
+      return s === val || s.startsWith(val + '-');
+    }
     default: {
-      if (typeof v === 'boolean' || v === null || !prim(v) || v === '') return false;
-      const x = Number(v);
-      const y = Number(a.value);
-      if (Number.isNaN(x) || Number.isNaN(y)) return false;
-      if (a.op === '>') return x > y;
-      if (a.op === '>=') return x >= y;
-      if (a.op === '<') return x < y;
-      return x <= y;
+      if (typeof v === 'number') return cmpNum(a.op, v, a.num ?? (a.num = Number(a.value)));
+      if (typeof v !== 'string' || v === '') return false;
+      return cmpNum(a.op, Number(v), a.num ?? (a.num = Number(a.value)));
     }
   }
+}
+
+function cmpNum(op, x, y) {
+  if (Number.isNaN(x) || Number.isNaN(y)) return false;
+  if (op === '>') return x > y;
+  if (op === '>=') return x >= y;
+  if (op === '<') return x < y;
+  return x <= y;
 }
 
 function collectIds(value, idKey) {

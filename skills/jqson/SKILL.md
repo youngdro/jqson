@@ -19,7 +19,7 @@ jqson help >/dev/null 2>&1 || npm i -g jqson     # 没装就装；项目内也�
 
 ```bash
 jqson help                 # 总览、上手三步、API 一览
-jqson help <主题>           # model selectors query mutation modes jquery transaction parallel script inspect cli recipes
+jqson help <主题>           # agent model selectors query mutation modes jquery reactive transaction parallel script inspect cli recipes
 jqson help <API名>          # 如 attr、merge、parallel；拼错会提示相近名字；加 --json 输出结构化
 ```
 
@@ -29,16 +29,46 @@ JS 中：`import { help } from 'jqson'; help('attr')`，或 `doc.help('merge')`�
 
 1. **看数据**：`jqson inspect data.json`，得到标签、字段类型与示例值、id、class、结构大纲和可直接用的选择器。不要猜字段名。
 2. **验选择器**：`jqson explain "<sel>" data.json`，看中文解释、匹配数和路径；语法错误会指出位置。
-3. **一次脚本改完**：先不加 `--write` 试跑，确认 `changes` 合理后再写回。
-   ```bash
-   jqson run data.json -e '$("segment#offer text").attr("text", args.cta).addClass("pulse")' --args '{"cta":"立即抢购"}'
-   jqson run data.json edit.js --lint rules.js --write      # 校验不过则整体不生效
-   ```
-   JS 中用 `await runScript(doc, code, { args })`，同样原子执行。
-   只读查询用 `jqson query data.json "<sel>" --pluck text`（或 `--paths` / `--count`）；回放补丁用 `jqson patch data.json p.json --out next.json`。
-4. **读结果**：CLI 除 help 外都输出一行 JSON；`ok:false` 时看 `errors`（校验）、`conflicts`（冲突）和 `hint`（下一步查什么）。
+3. **用声明式指令改**（默认方式，不执行代码）：先 `--dry-run` 看补丁，合理后再 `--write`。
+4. **读结果**：CLI 除 help 外都输出一行 JSON；`ok:false` 时看 `command`（第几条指令）、`errors`（校验）、`conflicts`（冲突）和 `hint`（下一步查什么）。整批失败时什么都不会改。
 
-## 4. 速记
+## 4. 三种修改方式，按这个顺序选
+
+**① 声明式指令 exec（首选）**：纯 JSON，只能调用白名单方法，整批原子执行，`expect` 断言匹配数量防止选错。
+
+```json
+[
+  { "$": "lottie#price-tag", "expect": 1, "attr": { "fields.price": "¥29", "fields.was": "¥59" } },
+  { "$": "#offer > text", "expect": 1, "do": [["text", "限时 ¥29"], ["addClass", "pulse"]] },
+  { "$": "text.caption", "css": { "fontSize": { "$mul": 1.1, "$round": 0 } } },
+  { "$": { "type": "image", "id": "logo", "src": "logo.png" }, "insertAfter": "#hero-shot" },
+  { "$": "#point-1, #point-2", "wrapAll": { "type": "group", "id": "g1" } },
+  { "$": "segment", "pluck": "id" }
+]
+```
+
+```bash
+jqson exec data.json cmds.json --dry-run            # 预览
+jqson exec data.json cmds.json --lint rules.js --write
+jqson exec data.json --ops '[{"$":"#hook","attr":["x",1]}]'
+```
+
+- 每条指令：`"$"` 选择器（或要新建的 JSON 对象）、可选 `"expect"`、然后是 `方法: 参数`（数组 = 参数列表，`true` = 无参数，其他 = 唯一参数）或 `"do": [["方法", ...参数]]` 链式调用。
+- 按旧值计算用值运算：`{"$add": n}` `{"$mul": n}` `{"$round": 位数}` `{"$prefix": s}` `{"$suffix": s}` `{"$replace": [旧, 新]}` `{"$default": v}`。
+- 读取：`pluck` `count` `paths` `json`，或 `"attr": "path"`，结果在 `results[i].value`。
+- 格式细节：`jqson help exec`、`jqson help agent`；工具调用的参数定义：`jqson schema`。
+
+**② JSON Patch**：要和其他系统交换改动、或逐条审核时用。路径先用 `jqson query data.json "<sel>" --paths` 拿到，再 `jqson patch data.json p.json --out next.json`。
+
+**③ 脚本 run / runScript（只在可信环境）**：exec 表达不了的循环、条件、复杂计算才用。脚本是任意 JavaScript，**没有沙箱**。
+```bash
+jqson run data.json -e '$("segment").each((i, seg) => { $(seg).find("text").attr("start", (j, v) => v + i * 0.1) })'
+```
+JS 中用 `await runScript(doc, code, { args })`，同样原子执行。
+
+只读查询：`jqson query data.json "<sel>" --pluck text`（或 `--paths` / `--count`）。
+
+## 5. 速记
 
 - 元素 = 带 `type` 或 `id` 的对象；标签 = `type`，没有时用所在属性名；中间的普通对象/数组会被穿透。
 - 选择器：`text` `#id` `.cls` `[zone=hero]` `[start>=2]` `[style.fontSize>40]` `a > b` `a b` `a + b` `a ~ b` `:has(> text)` `:not()` `:nth-child()` `:key(name)`。以 `#id` 开头最快。
@@ -48,19 +78,21 @@ JS 中：`import { help } from 'jqson'; help('attr')`，或 `doc.help('merge')`�
 - jQuery 里与 DOM 绑定的 `html` `val` `prop` `data`、事件、动画、尺寸都没有，用 `attr` / `doc.watch` 代替；对照表 `jqson help jquery`。
 - 模式：默认 `copy` 深拷贝；`mode: 'inplace'` 直接改传入对象；`mode: 'immutable'` 提供结构共享快照 `doc.state`（给 React 等框架用）。`jqson help modes`。
 - 配合 Vue / MobX：推荐 `doc.syncTo(store, { batch: runInAction })` 把提交后的改动逐字段推过去；也可 `mode: 'inplace'` 直接作用在 observable 上。`jqson help reactive`。
-- 多步修改放进 `doc.transaction(fn)` 或一段脚本；`doc.use(validator)` 加校验；`doc.undo()` 撤销。
+- 代码里：`doc.exec(commands, { dryRun })`；多步修改也可放进 `doc.transaction(fn)`；`doc.use(validator)` 加校验；`doc.undo()` 撤销。
 - 并行：`parallel(doc, tasks, { policy: 'skip' })`。等模型或网络的任务写成 `async (fork) => {}`，CPU 密集的写成 `{ script, args }` 交给 worker。让各任务改不同 id 的子树，避免冲突。
 - 合并按最近的唯一 id 祖先锚定，兄弟增删不会错位。冲突 = 同路径或前缀路径、修改了对方删除的子树；同一数组双方追加不算冲突。多次并行时传 `pool: await createPool({ size })` 复用线程。
 - 规模参考：2000 元素时查询约 1ms、8 个 worker 任务约 170ms；10 万元素时 fork 约 0.35s，并行主要耗在数据复制。
 
-## 5. 不要
+## 6. 不要
 
 - 不要直接给 `doc.root` 下的对象赋值，否则索引和撤销会失效。改动一律走 Selection 方法（如 `doc.$(sel).set(...)`）或 `doc.applyPatch`。
 - 在 shell 里写 `-e` 代码时用单引号包住整段，避免 `$` 被 shell 展开。
+- 不要用 `jqson run` / `runScript` 执行来自用户输入或第三方的代码：脚本没有沙箱，权限与当前进程相同。
 - 用 worker 跑脚本任务时，`element` 选项不能是函数。
-- 不要逐个元素多次调用 CLI；一段脚本完成全部修改更快，也是原子的。
+- 不要逐个元素多次调用 CLI；把改动写成一批 exec 指令一次提交，更快，也是原子的。
+- 能用 exec 表达时不要改用脚本。
 
-## 6. 维护
+## 7. 维护
 
 本 skill 随仓库 https://github.com/youngdro/jqson 维护，路径 `skills/jqson/SKILL.md`，也随 npm 包发布。`jqson skill` 输出当前版本，可以这样装进项目：
 `mkdir -p .claude/skills/jqson && jqson skill > .claude/skills/jqson/SKILL.md`

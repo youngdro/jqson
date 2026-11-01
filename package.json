@@ -1,24 +1,32 @@
 {
   "name": "jqson",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "jQuery for JSON：CSS 选择器查询、链式修改、事务回滚、变更流、fork/merge 并行。浏览器和 Node 通用，零依赖。",
   "type": "module",
   "main": "./src/index.js",
   "exports": {
-    ".": "./src/index.js",
-    "./worker": "./src/worker.js"
+    ".": {
+      "types": "./types/index.d.ts",
+      "default": "./src/index.js"
+    },
+    "./worker": "./src/worker.js",
+    "./package.json": "./package.json"
   },
   "bin": {
-    "jqson": "./bin/jqson.js"
+    "jqson": "bin/jqson.js"
   },
   "files": [
     "src",
     "bin",
+    "types/index.d.ts",
     "examples",
-    "README.md",
-    "AGENTS.md",
     "skills",
-    "docs"
+    "docs",
+    "README.md",
+    "README.en.md",
+    "AGENTS.md",
+    "CHANGELOG.md",
+    "LICENSE"
   ],
   "sideEffects": false,
   "engines": {
@@ -26,7 +34,10 @@
   },
   "scripts": {
     "test": "node --test test/*.test.js",
-    "bench": "node bench/bench.js"
+    "test:browser": "node test/browser/run.mjs",
+    "typecheck": "tsc -p types/tsconfig.json",
+    "bench": "node bench/bench.js",
+    "test:bundlers": "node test/bundlers/run.mjs"
   },
   "license": "MIT",
   "keywords": [
@@ -48,5 +59,10 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "types": "./types/index.d.ts",
+  "devDependencies": {
+    "playwright": "1.49.1",
+    "typescript": "5.6.3"
   }
 }

@@ -5,6 +5,8 @@
 //   jqson skill   [--json]          输出随包附带的 Agent skill（SKILL.md）
 //   jqson inspect <file.json> [--depth n] [--limit n]
 //   jqson explain "<selector>" [file.json]
+//   jqson exec    <file.json> <commands.json | -> [--ops json] [--lint a.js] [--dry-run] [--write | --out file]
+//   jqson schema  输出 exec 指令的 JSON Schema（给工具调用用）
 //   jqson query <file.json> <selector> [--pluck path] [--paths] [--count]
 //   jqson run   <file.json> <script.js ...> [-e code] [--args json] [--lint lint.js]
 //                 [--parallel] [--threads n] [--write | --out file] [--patch file]
@@ -15,7 +17,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { jqson, runScript, parallel, help, inspect, explain, ValidationError, ConflictError, SelectorError } from '../src/index.js';
+import { jqson, runScript, parallel, help, inspect, explain, exec, execSchema, ExecError, ValidationError, ConflictError, SelectorError } from '../src/index.js';
 
 const argv = process.argv.slice(2);
 const cmd = argv.shift();
@@ -29,7 +31,7 @@ function flags(list) {
     else if (a.startsWith('--')) {
       const k = a.slice(2);
       const next = list[i + 1];
-      if (['write', 'paths', 'count', 'parallel', 'pretty', 'json'].includes(k)) f[k] = true;
+      if (['write', 'paths', 'count', 'parallel', 'pretty', 'json', 'dry-run'].includes(k)) f[k] = true;
       else f[k] = next, i++;
     } else pos.push(a);
   }
@@ -45,13 +47,19 @@ function fail(e) {
   const r = { ok: false, error: e.message, name: e.name };
   if (e instanceof ValidationError) r.errors = e.errors;
   if (e instanceof ConflictError) r.conflicts = e.conflicts;
+  if (e instanceof ExecError) {
+    r.command = e.index;
+    if (e.expected !== undefined) Object.assign(r, { expected: e.expected, actual: e.actual });
+  } else if (e?.commandIndex !== undefined) r.command = e.commandIndex;
   r.hint = e instanceof SelectorError
     ? `jqson explain "${e.selector}"；jqson help selectors`
     : e instanceof ValidationError
       ? '修改未生效。按 errors 调整后重试'
       : e instanceof ConflictError
         ? '与其他修改冲突，未生效。jqson help parallel'
-        : 'jqson help 查看用法';
+        : e instanceof ExecError
+          ? '整批指令未生效。jqson help exec 查看指令格式'
+          : 'jqson help 查看用法';
   out(r, 1);
 }
 
@@ -74,7 +82,7 @@ async function loadValidators(doc, spec) {
   }
 }
 
-const COMMANDS = ['help', 'skill', 'inspect', 'explain', 'query', 'run', 'patch'];
+const COMMANDS = ['help', 'skill', 'inspect', 'explain', 'query', 'exec', 'patch', 'run', 'schema'];
 
 try {
   const { pos, f } = flags(argv);
@@ -144,6 +152,20 @@ try {
     if (f.patch) fs.writeFileSync(f.patch, JSON.stringify(patch, null, 2) + '\n');
     const saved = save(doc, file, f);
     out({ ok: true, version: doc.version, changes: patch.length, results, conflicts, saved, ms: +(performance.now() - t0).toFixed(2) });
+  } else if (cmd === 'exec') {
+    // 声明式指令：不执行代码。指令来自文件、- (stdin) 或 --ops '<json>'
+    const [file, opsFile] = pos;
+    if (!file) throw new Error('用法: jqson exec <file.json> <commands.json | -> [--ops json] [--lint a.js] [--dry-run] [--write | --out file] [--patch file]');
+    const text = f.ops ?? (opsFile === '-' ? fs.readFileSync(0, 'utf8') : opsFile ? fs.readFileSync(opsFile, 'utf8') : null);
+    if (text === null) throw new Error('缺少指令：给出 commands.json、- 或 --ops');
+    const doc = load(file);
+    await loadValidators(doc, f.lint);
+    const r = exec(doc, JSON.parse(text), { dryRun: !!f['dry-run'] });
+    if (f.patch) fs.writeFileSync(f.patch, JSON.stringify(r.patch, null, 2) + '\n');
+    const saved = f['dry-run'] ? null : save(doc, file, f);
+    out({ ok: true, applied: r.applied, changes: r.patch.length, results: r.results, patch: f.patch ? undefined : r.patch, saved, ms: +(performance.now() - t0).toFixed(2) });
+  } else if (cmd === 'schema') {
+    out(execSchema);
   } else if (cmd === 'patch') {
     const [file, patchFile] = pos;
     const doc = load(file);
