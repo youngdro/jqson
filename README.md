@@ -5,11 +5,12 @@
 **jQuery for JSON**：用 CSS 选择器和 jQuery 式的链式方法读写任意 JSON，带事务、校验、撤销、变更流，以及基于 fork/merge 的并行修改。零依赖，同一份代码在**浏览器**和 **Node** 中运行。
 
 ```bash
-npm i jqson          # 全局安装可直接用命令：npm i -g jqson && jqson help
+npm i @jqson/jqson          # 全局安装可直接用命令：npm i -g @jqson/jqson && jqson help
+npx -p @jqson/jqson jqson help   # 不安装直接试用
 ```
 
 ```js
-import jqson from 'jqson';
+import jqson from '@jqson/jqson';
 
 const doc = jqson(project);                       // 深拷贝一次并建索引
 doc.$('segment#hook text').attr('style.color', '#ff3b30');
@@ -29,7 +30,7 @@ jqson explain "segment > text[start>=2]" data.json   # 中文解释 + 匹配数 
 ```
 
 ```js
-import { help, inspect, explain } from 'jqson';
+import { help, inspect, explain } from '@jqson/jqson';
 help('attr');  help.json('parallel');  help.api();
 inspect(doc);  doc.describe();  explain('text:has(> image)');
 ```
@@ -170,7 +171,7 @@ doc.merge(a, { policy: 'throw' | 'skip' | 'force' });
 `parallel(doc, tasks, opts)` 同时跑多个任务，结束后依次合并：
 
 ```js
-import { parallel, createPool } from 'jqson';
+import { parallel, createPool } from '@jqson/jqson';
 
 const reports = await parallel(doc, [
   // 函数任务：当前线程、各自 fork，适合等模型/网络（I/O 并发）
@@ -227,7 +228,7 @@ jqson schema                                          # JSON Schema，直接作�
 
 ```js
 const { results, patch } = doc.exec(commands, { dryRun: true });
-import { execSchema } from 'jqson';   // 交给模型的工具定义
+import { execSchema } from '@jqson/jqson';   // 交给模型的工具定义
 ```
 
 **案例：商品视频批量改价并突出卖点**
@@ -268,7 +269,7 @@ jqson patch project.json changes.json --out next.json
 ### 6.3 脚本（仅限可信环境）
 
 ```js
-import { runScript } from 'jqson';
+import { runScript } from '@jqson/jqson';
 await runScript(doc, `
   for (const seg of $('segment')) {
     const texts = $(seg).find('text');
@@ -311,7 +312,7 @@ jqson patch project.json out.patch.json --out next.json
 - **Vite**：`vite build` 不用配置。开发服务器会预构建依赖，导致找不到 worker 文件，需要排除：
   ```js
   // vite.config.js
-  export default { optimizeDeps: { exclude: ['jqson'] } };
+  export default { optimizeDeps: { exclude: ['@jqson/jqson'] } };
   ```
 - **webpack 5**：不用配置。入口里用了顶层 await 的话打开 `experiments.topLevelAwait`（webpack 5.83 起默认开启）。
 

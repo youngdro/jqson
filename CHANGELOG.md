@@ -4,7 +4,10 @@
 
 ## 1.0.0 - 2026-11-01
 
-首个正式版本，也是首次发布到 npm。从这一版起 API 视为稳定：不兼容改动只在主版本号升级时出现。
+首个正式版本，也是首次发布到 npm。
+
+- **包名为 `@jqson/jqson`**：npm 不允许无作用域的 jqson（认为与 json 等包名过于相似），改在 jqson 组织下发布。安装用 `npm i @jqson/jqson`，导入用 `import jqson from '@jqson/jqson'`；命令行仍叫 `jqson`
+从这一版起 API 视为稳定：不兼容改动只在主版本号升级时出现。
 
 - 新增声明式指令 `exec`（`doc.exec(commands)` / `jqson exec`）：纯 JSON、方法白名单、整批原子、`expect` 断言匹配数、值运算 `$add` `$mul` 等、`--dry-run` 预览；`execSchema` / `jqson schema` 给工具调用用
 - README、skill、AGENTS.md 把给 Agent 的推荐方式改为 exec → JSON Patch → 脚本，并附案例
@@ -12,7 +15,7 @@
 - 新增 GitHub Actions：Node 18 / 20 / 22 单元测试、Chromium 冒烟测试（含 Web Worker 并行）、类型检查
 - 新增英文 README（`README.en.md`）
 - 文档写明 `runScript` / `jqson run` 执行任意 JS、没有沙箱
-- 修复：经 Vite / webpack 打包后 worker 无法加载（Vite 不会打出 worker 文件，webpack 因 `node:worker_threads` 报错）。现在 Vite build、Vite dev（需 `optimizeDeps.exclude: ['jqson']`）和 webpack 5 都能直接使用，新增 `npm run test:bundlers` 在 Chromium 中实测
+- 修复：经 Vite / webpack 打包后 worker 无法加载（Vite 不会打出 worker 文件，webpack 因 `node:worker_threads` 报错）。现在 Vite build、Vite dev（需 `optimizeDeps.exclude: ['@jqson/jqson']`）和 webpack 5 都能直接使用，新增 `npm run test:bundlers` 在 Chromium 中实测
 - worker 加载失败时的报错改为给出排查提示
 - 性能：全文属性扫描改用缓存的文档顺序表，约快 2 倍；大结果集按文档顺序排序改为 O(N) 过滤或数字排序；属性匹配不再每次创建闭包。10 万元素时 `text[style.fontSize>55]` 由约 25 ms 降到约 13 ms，合并 500 处改动由约 470 ms 降到约 316 ms
 

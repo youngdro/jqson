@@ -1,5 +1,5 @@
 // 类型检查用例：npm run typecheck
-import jqson, { exec, execSchema, parallel, runScript, syncTo, help, inspect, explain, ValidationError, JsonDoc, Selection } from 'jqson';
+import jqson, { exec, execSchema, parallel, runScript, syncTo, help, inspect, explain, ValidationError, JsonDoc, Selection } from '@jqson/jqson';
 
 interface Project { type: 'project'; id: string; children: { type: string; id: string; text?: string }[] }
 const data: Project = { type: 'project', id: 'p', children: [{ type: 'text', id: 't', text: 'a' }] };

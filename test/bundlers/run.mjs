@@ -21,7 +21,7 @@ fs.copyFileSync(path.join(here, 'app.js'), path.join(dir, 'src/main.js'));
 fs.writeFileSync(path.join(dir, 'index.html'), '<!doctype html><script type="module" src="/src/main.js"></script>');
 fs.writeFileSync(
   path.join(dir, 'vite.config.js'),
-  "export default { build: { outDir: 'dist-vite', target: 'es2022' }, worker: { format: 'es' }, optimizeDeps: { exclude: ['jqson'] } };",
+  "export default { build: { outDir: 'dist-vite', target: 'es2022' }, worker: { format: 'es' }, optimizeDeps: { exclude: ['@jqson/jqson'] } };",
 );
 fs.writeFileSync(
   path.join(dir, 'webpack.config.cjs'),

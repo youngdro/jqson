@@ -5,11 +5,12 @@
 **jQuery for JSON**: read and write any JSON with CSS selectors and jQuery-style chained methods, with transactions, validation, undo, a change stream, and parallel edits based on fork/merge. Zero dependencies; the same code runs in the **browser** and in **Node**.
 
 ```bash
-npm i jqson          # or install globally for the CLI: npm i -g jqson && jqson help
+npm i @jqson/jqson          # or install globally for the CLI: npm i -g @jqson/jqson && jqson help
+npx -p @jqson/jqson jqson help   # try it without installing
 ```
 
 ```js
-import jqson from 'jqson';
+import jqson from '@jqson/jqson';
 
 const doc = jqson(project);                       // deep-copies once and builds indexes
 doc.$('segment#hook text').attr('style.color', '#ff3b30');
@@ -31,7 +32,7 @@ jqson explain "segment > text[start>=2]" data.json   # explanation + match count
 ```
 
 ```js
-import { help, inspect, explain } from 'jqson';
+import { help, inspect, explain } from '@jqson/jqson';
 help('attr');  help.json('parallel');  help.api();
 inspect(doc);  doc.describe();  explain('text:has(> image)');
 ```
@@ -172,7 +173,7 @@ Conflict rules:
 `parallel(doc, tasks, opts)` runs several tasks at once and merges them in turn afterwards:
 
 ```js
-import { parallel, createPool } from 'jqson';
+import { parallel, createPool } from '@jqson/jqson';
 
 const reports = await parallel(doc, [
   // function task: current thread, its own fork; good for waiting on models or the network (I/O concurrency)
@@ -229,7 +230,7 @@ jqson schema                                          # JSON Schema, ready to us
 
 ```js
 const { results, patch } = doc.exec(commands, { dryRun: true });
-import { execSchema } from 'jqson';   // tool definition to give the model
+import { execSchema } from '@jqson/jqson';   // tool definition to give the model
 ```
 
 **Example: reprice a product video and highlight the selling points**
@@ -270,7 +271,7 @@ Every commit's changes are also available from `doc.on(e => e.patch)` or `--patc
 ### 6.3 Scripts (trusted environments only)
 
 ```js
-import { runScript } from 'jqson';
+import { runScript } from '@jqson/jqson';
 await runScript(doc, `
   for (const seg of $('segment')) {
     const texts = $(seg).find('text');
@@ -313,7 +314,7 @@ The source is plain ESM. Node-only modules are imported dynamically in the Node 
 - **Vite**: `vite build` needs no configuration. The dev server pre-bundles dependencies and then cannot find the worker file, so exclude jqson:
   ```js
   // vite.config.js
-  export default { optimizeDeps: { exclude: ['jqson'] } };
+  export default { optimizeDeps: { exclude: ['@jqson/jqson'] } };
   ```
 - **webpack 5**: no configuration needed. If your entry uses top-level await, enable `experiments.topLevelAwait` (on by default since webpack 5.83).
 

@@ -1,6 +1,6 @@
 # jqson（jQuery for JSON）· Agent 使用指引
 
-这个包自带完整文档和自查命令，不需要外部资料。遇到不确定的地方，先问包本身：
+这个包（npm 包名 `@jqson/jqson`，命令 `jqson`）自带完整文档和自查命令，不需要外部资料。遇到不确定的地方，先问包本身。下面的 `npx jqson` 需要包已装在项目里；没装时用 `npx -p @jqson/jqson jqson ...`，不要直接 `npx jqson`（npm 上的 jqson 不是本包）：
 
 ```bash
 npx jqson help                 # 总览、上手三步、API 一览
@@ -12,7 +12,7 @@ npx jqson explain "<sel>" data.json   # 解释选择器，返回匹配数和路�
 
 随包附带一份 Agent skill：`jqson skill` 输出内容，源文件在 `skills/jqson/SKILL.md`。
 
-在代码里同样可用：`import { help, inspect, explain } from 'jqson'`，`doc.describe()`，`doc.help('merge')`。
+在代码里同样可用：`import { help, inspect, explain } from '@jqson/jqson'`，`doc.describe()`，`doc.help('merge')`。
 
 ## 推荐流程
 

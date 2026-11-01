@@ -1,5 +1,5 @@
 {
-  "name": "jqson",
+  "name": "@jqson/jqson",
   "version": "1.0.0",
   "description": "jQuery for JSON：CSS 选择器查询、链式修改、事务回滚、变更流、fork/merge 并行。浏览器和 Node 通用，零依赖。",
   "type": "module",

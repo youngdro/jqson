@@ -10,7 +10,7 @@ description: Use when querying or editing JSON documents (video projects, timeli
 ## 1. 准备
 
 ```bash
-jqson help >/dev/null 2>&1 || npm i -g jqson     # 没装就装；项目内也可 npm i jqson 后用 npx jqson
+jqson help >/dev/null 2>&1 || npm i -g @jqson/jqson     # 没装就装；项目内也可 npm i @jqson/jqson 后用 npx jqson；不要在未安装时 npx jqson
 ```
 
 ## 2. 不确定就问包本身
@@ -23,7 +23,7 @@ jqson help <主题>           # agent model selectors query mutation modes jquer
 jqson help <API名>          # 如 attr、merge、parallel；拼错会提示相近名字；加 --json 输出结构化
 ```
 
-JS 中：`import { help } from 'jqson'; help('attr')`，或 `doc.help('merge')`。
+JS 中：`import { help } from '@jqson/jqson'; help('attr')`，或 `doc.help('merge')`。
 
 ## 3. 标准流程
 

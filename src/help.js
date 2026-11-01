@@ -116,7 +116,7 @@ const TOPICS = {
   2. 试选择器    explain(sel); doc.$(sel)  或 jqson explain "<sel>" file.json
   3. 改          doc.exec(commands)        或 jqson exec file.json --ops '<json>'（不执行代码，推荐）
 
-  import jqson, { runScript, parallel, help, inspect, explain } from 'jqson';
+  import jqson, { runScript, parallel, help, inspect, explain } from '@jqson/jqson';
   const doc = jqson(data);
   doc.$('segment#offer text').attr('text', '立即抢购').addClass('pulse');
   doc.undo();
@@ -290,7 +290,7 @@ await parallel(doc, [
 - worker 需要复制数据，大文档上主要开销在这里；等模型返回只用函数任务即可。
 - 反复调用请传 pool: await createPool({ size })，用完 pool.close()。
 - 脚本任务时 options.element 不能是函数。
-- 打包器：Vite build、webpack 5 无需配置；Vite 开发服务器需 optimizeDeps: { exclude: ['jqson'] }。`,
+- 打包器：Vite build、webpack 5 无需配置；Vite 开发服务器需 optimizeDeps: { exclude: ['@jqson/jqson'] }。`,
   },
   script: {
     title: '脚本：给 Agent 的一次性原子修改',

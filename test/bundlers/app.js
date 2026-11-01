@@ -1,5 +1,5 @@
 // 打包器测试用的页面脚本：在 worker 里跑两个脚本任务，结果写到 window.__result
-import jqson, { parallel } from 'jqson';
+import jqson, { parallel } from '@jqson/jqson';
 
 const doc = jqson({
   type: 'project',
