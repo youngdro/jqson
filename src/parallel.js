@@ -24,7 +24,8 @@ export async function parallel(doc, tasks, { policy = 'throw', order = 'task', t
   let ownPool = null;
   if (scripted && !pool) ownPool = pool = await createPool({ size: threads });
   const baseVersion = doc.version;
-  const snapshot = scripted ? (order === 'finish' ? doc.toJSON() : doc.root) : null;
+  // inplace 模式下 root 可能是代理对象，无法跨线程传递，先导出纯 JSON
+  const snapshot = scripted ? (order === 'finish' || doc.options.mode === 'inplace' ? doc.toJSON() : doc.root) : null;
 
   const run = (task, index) => {
     if (typeof task === 'function') {
@@ -71,7 +72,8 @@ export async function parallel(doc, tasks, { policy = 'throw', order = 'task', t
 
 function serializableOptions(o) {
   if (typeof o.element === 'function') throw new Error('script tasks need options.element to be "auto" or "all"');
-  return { ...o, mode: 'inplace', clone: false };
+  const { batch, ...rest } = o;
+  return { ...rest, mode: 'inplace', clone: false };
 }
 
 /** 创建 worker 池。worker 会缓存最近一次收到的文档快照，同一版本只传一次。 */

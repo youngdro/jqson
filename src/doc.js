@@ -40,6 +40,7 @@ const DEFAULTS = {
   //               每次提交只有改动路径上的对象换新引用，适合 React 等按引用比较的框架
   history: 200, // 撤销栈深度，0 关闭
   freeze: false, // snapshot() 产出的新对象是否 Object.freeze
+  batch: null, // (run) => run() 的包装，例如 MobX 的 runInAction；inplace 作用在 observable 上时使用
 };
 const MODES = ['copy', 'inplace', 'immutable'];
 
@@ -70,29 +71,27 @@ export class JsonDoc {
     this.key = `doc${++docSeq}-${Math.random().toString(36).slice(2, 8)}`;
     this.version = 0;
 
-    // 父指针和元素登记直接挂在对象的私有 Symbol 属性上（比 WeakMap 快很多，且不会出现在 JSON 输出里）
-    const UP = Symbol('up'); // 对象/数组 -> { owner, key }，数组成员 key 为 null
-    const EL = Symbol('el'); // 元素 -> 已登记的 { tag, id, classes }
-    const PUB = Symbol('pub'); // 对象/数组 -> 它在不可变快照中的对应对象（失效时为 undefined）
-    this._U = UP;
-    this._E = EL;
-    this._P = PUB;
-    this._up = {
-      get: (x) => x[UP],
-      set: (x, v) => (x[UP] = v),
-      has: (x) => x[UP] !== undefined,
-      delete: (x) => (x[UP] = undefined),
-    };
-    this._isEl = {
-      has: (x) => isObj(x) && x[EL] !== undefined,
-      add: () => {},
-      delete: (x) => (x[EL] = undefined),
-    };
-    this._elKeys = {
-      get: (x) => x[EL],
-      set: (x, v) => (x[EL] = v),
-      delete: (x) => (x[EL] = undefined),
-    };
+    // 内部元数据：父指针、元素登记、快照对应对象。
+    // - copy / immutable：对象是 jqson 自己创建的，元数据直接挂在私有 Symbol 属性上，最快
+    // - inplace：对象属于调用方（可能是 Vue / MobX 代理或冻结对象），元数据放在 WeakMap 里，
+    //   不往对象上写任何东西，也不经过代理的拦截器
+    if (mode === 'inplace') {
+      const up = new WeakMap();
+      const el = new WeakMap();
+      const pub = new WeakMap();
+      this._up = { get: (x) => up.get(x), set: (x, v) => void up.set(x, v), has: (x) => up.get(x) !== undefined, delete: (x) => void up.delete(x) };
+      this._isEl = { has: (x) => isObj(x) && el.has(x), add: () => {}, delete: (x) => void el.delete(x) };
+      this._elKeys = { get: (x) => el.get(x), set: (x, v) => void el.set(x, v), delete: (x) => void el.delete(x) };
+      this._pub = { get: (x) => pub.get(x), set: (x, v) => void pub.set(x, v) };
+    } else {
+      const UP = Symbol('up'); // 对象/数组 -> { owner, key }，数组成员 key 为 null
+      const EL = Symbol('el'); // 元素 -> 已登记的 { tag, id, classes }
+      const PUB = Symbol('pub'); // 对象/数组 -> 它在不可变快照中的对应对象（失效时为 undefined）
+      this._up = { get: (x) => x[UP], set: (x, v) => (x[UP] = v), has: (x) => x[UP] !== undefined, delete: (x) => (x[UP] = undefined) };
+      this._isEl = { has: (x) => isObj(x) && x[EL] !== undefined, add: () => {}, delete: (x) => (x[EL] = undefined) };
+      this._elKeys = { get: (x) => x[EL], set: (x, v) => (x[EL] = v), delete: (x) => (x[EL] = undefined) };
+      this._pub = { get: (x) => x[PUB], set: (x, v) => (x[PUB] = v) };
+    }
     this._byId = new Map();
     this._byTag = new Map();
     this._byClass = new Map();
@@ -122,11 +121,11 @@ export class JsonDoc {
    * immutable 模式下初始快照就是传入的原对象。任何模式都可以调用。
    */
   snapshot() {
-    const P = this._P;
+    const pub = this._pub;
     const freeze = this.options.freeze;
     const build = (v) => {
       if (!isObj(v)) return v;
-      const hit = v[P];
+      const hit = pub.get(v);
       if (hit !== undefined) return hit;
       let out;
       if (Array.isArray(v)) {
@@ -137,7 +136,7 @@ export class JsonDoc {
         for (const k of Object.keys(v)) out[k] = build(v[k]);
       }
       if (freeze) Object.freeze(out);
-      v[P] = out;
+      pub.set(v, out);
       return out;
     };
     return build(this.root);
@@ -150,11 +149,10 @@ export class JsonDoc {
 
   // 容器内容变化：沿父链让快照失效（遇到已失效的祖先即停止，祖先必然也已失效）
   _dirty(x) {
-    const P = this._P;
-    const U = this._U;
-    while (x && x[P] !== undefined) {
-      x[P] = undefined;
-      x = x[U]?.owner;
+    const pub = this._pub;
+    while (x && pub.get(x) !== undefined) {
+      pub.set(x, undefined);
+      x = this._up.get(x)?.owner;
     }
   }
 
@@ -170,18 +168,26 @@ export class JsonDoc {
       return this._fragment(target);
     }
     if (isObj(target)) {
-      if (this._isEl.has(target)) return new Selection(this, [target]);
-      if (this._up.has(target) || target === this.root) return new Selection(this, []);
+      if (this._isEl.has(target) && this._attached(target)) return new Selection(this, [target]);
+      if (this._attached(target)) return new Selection(this, []);
       return this._fragment([target]);
     }
     return new Selection(this, this._query(String(target), scope ? this.$(scope).nodes : null, false));
+  }
+
+  // 元素确实挂在文档里（排除用展开运算符复制出来、带着元数据的对象）
+  _attached(n) {
+    if (n === this.root) return true;
+    const m = this._up.get(n);
+    if (!m) return false;
+    return m.key === null ? m.owner.includes(n) : m.owner[m.key] === n;
   }
 
   // 游离元素：放在一个临时文档里，修改照常可用；appendTo 等会把它们复制进宿主文档
   _fragment(values) {
     const host = this._host || this;
     const ck = this.options.childrenKey;
-    const frag = new JsonDoc({ [ck]: values.filter(isObj) }, { ...this.options, mode: 'copy', history: 0 });
+    const frag = new JsonDoc({ [ck]: values.filter(isObj) }, { ...this.options, mode: 'copy', history: 0, batch: null });
     frag._host = host;
     for (const n of frag.root[ck]) {
       if (!frag._isEl.has(n)) {
@@ -273,6 +279,16 @@ export class JsonDoc {
    */
   transaction(fn, meta = {}) {
     if (this._tx) return { result: fn(this), patch: null, version: this.version };
+    // options.batch：把整个事务包进外部的批处理，例如 MobX 的 runInAction，观察者只在提交后反应一次
+    const batch = this.options.batch;
+    if (batch && !this._inBatch) {
+      this._inBatch = true;
+      try {
+        return batch(() => this.transaction(fn, meta));
+      } finally {
+        this._inBatch = false;
+      }
+    }
     const tx = (this._tx = { ops: [], inv: [], touched: new Set() });
     let result;
     try {
@@ -368,7 +384,7 @@ export class JsonDoc {
 
   /** 复制出一份独立文档。修改 fork 不影响原文档，之后用 merge 合回。 */
   fork() {
-    const f = new JsonDoc(this.root, { ...this.options, mode: 'copy' });
+    const f = new JsonDoc(this.root, { ...this.options, mode: 'copy', batch: null });
     f._base = { doc: this, version: this.version };
     return f;
   }
@@ -460,12 +476,15 @@ export class JsonDoc {
   _adoptRec(v, owner, key, clone, isRoot) {
     const arr = Array.isArray(v);
     const out = clone ? (arr ? new Array(v.length) : {}) : v;
-    if (owner) out[this._U] = { owner, key };
-    if (this._seed) out[this._P] = v;
+    if (owner) this._up.set(out, { owner, key });
+    if (this._seed) this._pub.set(out, v);
     if (arr) {
       for (let i = 0; i < v.length; i++) {
         const c = v[i];
-        out[i] = isObj(c) ? this._adoptRec(c, out, null, clone, false) : c;
+        if (isObj(c)) {
+          const a = this._adoptRec(c, out, null, clone, false);
+          if (clone) out[i] = a;
+        } else if (clone) out[i] = c;
       }
       return out;
     }
@@ -473,8 +492,10 @@ export class JsonDoc {
     for (let i = 0; i < keys.length; i++) {
       const k = keys[i];
       const c = v[k];
-      if (isObj(c)) out[k] = this._adoptRec(c, out, k, clone, false);
-      else if (clone) out[k] = c;
+      if (isObj(c)) {
+        const a = this._adoptRec(c, out, k, clone, false);
+        if (clone) out[k] = a;
+      } else if (clone) out[k] = c;
     }
     if (this._isElement(out, key, isRoot)) {
       this._count++;
@@ -789,6 +810,8 @@ export class JsonDoc {
     }
   }
 
+  // 每个原语都先做完登记、记录和反向操作，最后才真正修改数据。
+  // 这样即使数据是 Vue / MobX 等代理、它们的观察者在修改时同步抛错，事务也能完整回滚。
   _set(container, key, value, raw = false) {
     const arr = Array.isArray(container);
     if (arr) {
@@ -799,32 +822,54 @@ export class JsonDoc {
     const old = container[key];
     if (isObj(old)) this._unregister(old);
     const v = this._adopt(value, container, arr ? null : key, !raw);
-    container[key] = v;
-    this._dirty(container);
-    if (!arr && this._isEl.has(container) && this._indexKeys().has(key)) this._reindex(container);
     this._record(had ? 'replace' : 'add', container, key, v, had ? old : undefined,
       had ? { t: 'set', c: container, k: key, v: old } : { t: 'del', c: container, k: key });
+    this._dirty(container);
+    const reindex = !arr && this._isEl.has(container) && this._indexKeys().has(key);
+    if (reindex) this._unindex(container);
+    try {
+      container[key] = v;
+      this._settle(container, key, v, arr);
+    } finally {
+      if (reindex) this._index(container);
+    }
   }
 
   _del(container, key) {
     if (Array.isArray(container)) return this._remove(container, Number(key));
     if (!Object.prototype.hasOwnProperty.call(container, key)) return;
     const old = container[key];
-    if (isObj(old)) this._unregister(old);
-    delete container[key];
-    this._dirty(container);
-    if (this._isEl.has(container) && this._indexKeys().has(key)) this._reindex(container);
     this._record('remove', container, key, undefined, old, { t: 'set', c: container, k: key, v: old });
+    if (isObj(old)) this._unregister(old);
+    this._dirty(container);
+    const reindex = this._isEl.has(container) && this._indexKeys().has(key);
+    if (reindex) this._unindex(container);
+    try {
+      delete container[key];
+    } finally {
+      if (reindex) this._index(container);
+    }
   }
 
   _insert(arr, index, value, raw = false) {
     if (index < 0 || index > arr.length) throw new RangeError(`Index ${index} out of range`);
     const v = this._adopt(value, arr, null, !raw);
     const append = index === arr.length;
-    arr.splice(index, 0, v);
+    this._record('add', arr, index, v, undefined, { t: 'rm', c: arr, k: index }, append ? { append: true } : {});
     this._dirty(arr);
     this._struct++;
-    this._record('add', arr, index, v, undefined, { t: 'rm', c: arr, k: index }, append ? { append: true } : {});
+    arr.splice(index, 0, v);
+    this._settle(arr, index, v, true);
+  }
+
+  // 有些响应式库（MobX observable、Valtio）在赋值时会把普通对象换成自己的代理副本。
+  // 写入后读回实际存进去的对象，按它重新登记，之后的修改才能作用到真正的数据上。
+  _settle(container, key, v, arr) {
+    if (this.options.mode !== 'inplace' || !isObj(v)) return;
+    const stored = container[key];
+    if (stored === v || !isObj(stored)) return;
+    this._unregister(v);
+    this._adopt(stored, container, arr ? null : key, false);
   }
 
   _remove(arr, index) {
@@ -832,10 +877,10 @@ export class JsonDoc {
     const old = arr[index];
     // 先记录（路径要在删除前计算），再删除
     this._record('remove', arr, index, undefined, old, { t: 'ins', c: arr, k: index, v: old });
-    arr.splice(index, 1);
-    this._dirty(arr);
     if (isObj(old)) this._unregister(old);
     else this._struct++;
+    this._dirty(arr);
+    arr.splice(index, 1);
   }
 
   // 把元素从所在位置删除（数组成员或对象属性）
@@ -851,13 +896,19 @@ export class JsonDoc {
     return this.__ik;
   }
 
-  _replay(inv) {
+  // tolerant：回滚时使用。原语在登记完成后才改数据，所以数据被改之后（例如代理的观察者）抛出的错误
+  // 不会破坏一致性，回滚继续执行剩下的步骤
+  _replay(inv, tolerant = false) {
     for (let i = inv.length - 1; i >= 0; i--) {
       const r = inv[i];
-      if (r.t === 'set') this._set(r.c, r.k, r.v, true);
-      else if (r.t === 'del') this._del(r.c, r.k);
-      else if (r.t === 'ins') this._insert(r.c, r.k, r.v, true);
-      else if (r.t === 'rm') this._remove(r.c, r.k);
+      try {
+        if (r.t === 'set') this._set(r.c, r.k, r.v, true);
+        else if (r.t === 'del') this._del(r.c, r.k);
+        else if (r.t === 'ins') this._insert(r.c, r.k, r.v, true);
+        else if (r.t === 'rm') this._remove(r.c, r.k);
+      } catch (e) {
+        if (!tolerant) throw e;
+      }
     }
   }
 
@@ -865,7 +916,7 @@ export class JsonDoc {
     const saved = this._tx;
     this._tx = { ops: [], inv: [], touched: new Set() };
     try {
-      this._replay(tx.inv);
+      this._replay(tx.inv, true);
     } finally {
       this._tx = saved;
     }

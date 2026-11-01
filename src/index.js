@@ -5,6 +5,8 @@ export { parseSelector, parseRelativeSelector, SelectorError } from './selector.
 export { parallel, createPool } from './parallel.js';
 export { runScript, compileScript } from './script.js';
 export { help, inspect, explain };
+export { applyPatchTo, syncTo } from './sync.js';
+import { syncTo } from './sync.js';
 
 import { help, inspect, explain } from './help.js';
 
@@ -13,6 +15,10 @@ JsonDoc.prototype.describe = function describe(options) {
   return inspect(this, options);
 };
 JsonDoc.prototype.help = help;
+/** doc.syncTo(reactiveObj, { batch }) 等同 syncTo(doc, reactiveObj, { batch }) */
+JsonDoc.prototype.syncTo = function (target, options) {
+  return syncTo(this, target, options);
+};
 
 /** 创建文档：const doc = jqson(json); doc.$('clip.caption').attr('style.color', '#fff') */
 export function jqson(data, options) {

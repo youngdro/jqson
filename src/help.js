@@ -15,7 +15,9 @@ import { JsonDoc } from './doc.js';
 
 const API = [
   // 包导出
-  { name: 'jqson', on: 'module', sig: 'jqson(data, options?) → JsonDoc', desc: '创建文档。默认深拷贝 data 并建索引，原数据不变。options: mode: "copy"（默认，深拷贝）| "inplace"（直接改传入对象）| "immutable"（深拷贝 + 结构共享快照 doc.state）；typeKey/idKey/classKey/childrenKey/styleKey/textKey 字段名；element: "auto"|"all"|fn；history；freeze。', ex: "const doc = jqson(json, { mode: 'immutable' })" },
+  { name: 'jqson', on: 'module', sig: 'jqson(data, options?) → JsonDoc', desc: '创建文档。默认深拷贝 data 并建索引，原数据不变。options: mode: "copy"（默认，深拷贝）| "inplace"（直接改传入对象）| "immutable"（深拷贝 + 结构共享快照 doc.state）；typeKey/idKey/classKey/childrenKey/styleKey/textKey 字段名；element: "auto"|"all"|fn；history；freeze；batch（如 MobX 的 runInAction，把每个事务包进批处理）。', ex: "const doc = jqson(json, { mode: 'immutable' })" },
+  { name: 'syncTo', on: 'module', sig: 'doc.syncTo(target, { batch? }) → unsubscribe；syncTo(doc, target, opts)', desc: '每次提交后把改动（JSON Patch）逐字段应用到外部的响应式对象（Vue reactive、MobX observable 等）。观察者只看到提交后的结果，不会看到事务中间状态。MobX 传 batch: runInAction。', ex: 'doc.syncTo(store, { batch: runInAction })' },
+  { name: 'applyPatchTo', on: 'module', sig: 'applyPatchTo(target, patch) → target', desc: '把 JSON Patch 原地应用到任意对象（逐字段修改，适合代理对象）。' },
   { name: 'fn', on: 'module', sig: 'jqson.fn.name = function (...) { return this }', desc: '插件扩展点，同 jQuery.fn（即 Selection.prototype）。', ex: "jqson.fn.shift = function (dt) { return this.attr('start', (i, v) => v + dt) }" },
   { name: 'runScript', on: 'module', sig: 'runScript(doc, source, { args, policy }) → Promise<{ result, ops, version, conflicts }>', desc: '在 fork 上执行一段脚本，成功才整体合并。脚本内可用 $、doc、args，可 await。Agent 做多步修改的首选方式。', ex: "await runScript(doc, \"$('text').attr('text', args.t); return $('text').length\", { args: { t: 'Hi' } })" },
   { name: 'parallel', on: 'module', sig: 'parallel(doc, tasks, { policy, order, threads, pool }) → Promise<report[]>', desc: '并行执行任务后合并。函数任务 async (fork) => {} 在当前线程跑（适合等模型/网络）；{ script, args } 在 worker 线程跑（适合 CPU 密集）。report: { index, ok, applied, conflicts, error, result }。', ex: "await parallel(doc, [async (f) => f.$('#a').attr('x', 1), { script: \"$('image').attr('opacity', .9)\" }], { policy: 'skip' })" },
@@ -183,8 +185,9 @@ const TOPICS = {
     title: '三种模式：copy / inplace / immutable',
     body: `jqson(data, { mode })
   copy       默认。构造时深拷贝一次（2000 元素约 8ms），原数据不受影响。最安全，适合 Agent 和大多数场景。
-  inplace    直接接管并修改传入的对象，省一次拷贝和双份内存。要求之后只通过 jqson 修改它，
-             否则索引和撤销会失效。对象上会挂不可枚举的 Symbol 属性（JSON.stringify 看不到）。
+  inplace    直接接管并修改传入的对象，只有一份数据。元数据放在 WeakMap 里，建索引比 copy 慢约 2–3 倍
+             （10 万元素约 0.4s），之后的查询和修改速度相同。之后只能通过 jqson 修改它，否则索引和撤销会失效。
+             可以直接作用在 Vue reactive / MobX observable 上，见 help('reactive')。
   immutable  同 copy，另外提供结构共享的不可变快照：
                const s0 = doc.state;        // 初始就是传入的 data 本身
                doc.$('#a').attr('x', 1);
@@ -192,6 +195,27 @@ const TOPICS = {
                doc.on((e) => render(e.state));
              适合 React / Vue 等按引用比较的框架，组件可以精确重渲染。freeze: true 时冻结新对象。
 doc.snapshot() / doc.state 在任何模式下都能用；toJSON() 始终返回完整深拷贝。`,
+  },
+  reactive: {
+    title: '配合 Vue / MobX 等响应式数据',
+    body: `两种接法，推荐第一种：
+
+1. jqson 持有自己的数据，用 syncTo 推送改动（推荐）
+     const doc = jqson(toRaw(state));                 // Vue；MobX 用 toJS(store)
+     doc.syncTo(state);                               // Vue
+     doc.syncTo(store, { batch: runInAction });       // MobX
+   每次提交后按 JSON Patch 逐字段修改响应式对象，只有真正改动的字段触发更新，
+   观察者不会看到事务中间状态，jqson 的读取也不经过代理，最快。代价是多一份内存。
+
+2. inplace 直接作用在响应式对象上
+     const doc = jqson(state, { mode: 'inplace' });                       // Vue reactive
+     const doc = jqson(store, { mode: 'inplace', batch: runInAction });   // MobX observable
+   inplace 模式不往对象上写任何东西（元数据放在 WeakMap），建文档不会触发更新，toJS / 展开也不会带出多余字段。
+   MobX、Valtio 赋值时会把对象换成自己的代理，jqson 会读回并改用实际存进去的对象。
+   注意：每次读取都经过代理，比方案 1 慢；Vue 的 effect 是同步执行的，一个事务里的多步修改
+   会让它们中途运行（组件渲染是异步批量的，不受影响）。观察者抛错时事务会完整回滚。
+
+React / Zustand / Redux 这类按引用比较的：用 mode: 'immutable'，doc.on((e) => setState(e.state))。`,
   },
   jquery: {
     title: '与 jQuery 的对应关系',

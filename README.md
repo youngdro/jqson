@@ -101,7 +101,7 @@ s.set(path, value) / s.merge(obj, path?) / s.insert(content)   // jqson 扩展
 
 ```js
 jqson(data)                          // mode: 'copy'（默认）：深拷贝一次，原数据不受影响
-jqson(data, { mode: 'inplace' })     // 直接修改传入的对象，省拷贝；之后只能通过 jqson 改它
+jqson(data, { mode: 'inplace' })     // 直接修改传入的对象，只有一份数据；之后只能通过 jqson 改它
 jqson(data, { mode: 'immutable' })   // copy + 结构共享的不可变快照
 ```
 
@@ -114,6 +114,22 @@ doc.$('#point-1').text('零糖');       // 只有 #point-1、#selling、根 是�
 ```
 
 `doc.snapshot()` / `doc.state` 在任何模式下都能用；`freeze: true` 时新对象会被冻结。
+
+## 3.2 配合 Vue / MobX 等响应式数据
+
+推荐让 jqson 持有自己的数据，每次提交后用 JSON Patch 逐字段推给响应式对象：
+
+```js
+const doc = jqson(toRaw(state));                // Vue；MobX 用 toJS(store)
+doc.syncTo(state);                              // Vue
+doc.syncTo(store, { batch: runInAction });      // MobX：一次提交只触发一次反应，严格模式也不报警
+```
+
+只有真正改动的字段触发更新，观察者看不到事务中间状态，jqson 的读取也不经过代理。
+
+也可以用 `inplace` 直接作用在响应式对象上：`jqson(state, { mode: 'inplace' })`，MobX 再加 `batch: runInAction`。这个模式不往对象上写任何内部字段（元数据放在 WeakMap），建文档不会触发更新；MobX、Valtio 赋值时把对象换成代理副本的情况也已处理；观察者抛错时事务会完整回滚。代价是所有读取都经过代理，比 `syncTo` 慢。
+
+已用 @vue/reactivity 3.5 和 MobX 6.13 实测。详见 `jqson help reactive`。
 
 ## 4. 事务、校验、撤销、监听
 
@@ -225,7 +241,7 @@ jqson patch project.json out.patch.json --out next.json
 - 大文档上 fork 和 worker 并行的主要成本是**复制数据**（深拷贝或跨线程结构化克隆）。商品视频工程一般几百到几千个元素，这个规模上并行开销在百毫秒级。
 - 等模型返回这类 I/O 任务用函数任务就够了，不用 worker；只有 CPU 密集的批量改写才值得进 worker。
 
-运行：`npm test`（28 个用例），`npm run bench [段数] [每段元素数]`。
+运行：`npm test`（34 个用例），`npm run bench [段数] [每段元素数]`。
 
 ## 10. 文件
 
@@ -236,6 +252,7 @@ src/parallel.js   parallel()、createPool()
 src/script.js     runScript()、compileScript()
 src/worker.js     浏览器与 Node 共用的 worker 入口
 src/help.js       内置文档 help()、数据概况 inspect()、选择器解释 explain()
+src/sync.js       syncTo()、applyPatchTo()：同步到 Vue / MobX 等响应式数据
 bin/jqson.js      命令行
 skills/jqson/     随包附带的 Agent skill
 examples/         视频工程示例与校验器

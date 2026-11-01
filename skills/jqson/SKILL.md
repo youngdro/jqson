@@ -47,6 +47,7 @@ JS 中：`import { help } from 'jqson'; help('attr')`，或 `doc.help('merge')`�
 - 文档里已有的元素 append 到别处是移动；新建元素用 `doc.$({ type: 'image', ... }).appendTo('#seg')`，复制用 `.clone().attr('id', 'x').insertAfter(...)`。
 - jQuery 里与 DOM 绑定的 `html` `val` `prop` `data`、事件、动画、尺寸都没有，用 `attr` / `doc.watch` 代替；对照表 `jqson help jquery`。
 - 模式：默认 `copy` 深拷贝；`mode: 'inplace'` 直接改传入对象；`mode: 'immutable'` 提供结构共享快照 `doc.state`（给 React 等框架用）。`jqson help modes`。
+- 配合 Vue / MobX：推荐 `doc.syncTo(store, { batch: runInAction })` 把提交后的改动逐字段推过去；也可 `mode: 'inplace'` 直接作用在 observable 上。`jqson help reactive`。
 - 多步修改放进 `doc.transaction(fn)` 或一段脚本；`doc.use(validator)` 加校验；`doc.undo()` 撤销。
 - 并行：`parallel(doc, tasks, { policy: 'skip' })`。等模型或网络的任务写成 `async (fork) => {}`，CPU 密集的写成 `{ script, args }` 交给 worker。让各任务改不同 id 的子树，避免冲突。
 - 合并按最近的唯一 id 祖先锚定，兄弟增删不会错位。冲突 = 同路径或前缀路径、修改了对方删除的子树；同一数组双方追加不算冲突。多次并行时传 `pool: await createPool({ size })` 复用线程。
