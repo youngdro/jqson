@@ -1,28 +1,28 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import jqson, { parallel } from '../src/index.js';
+import jsonjq, { parallel } from '../src/index.js';
 
 const sample = () => JSON.parse(fs.readFileSync(new URL('../examples/video-project.json', import.meta.url), 'utf8'));
 const ids = (s) => s.pluck('id');
 
 test('mode: copy 不动原数据，inplace 直接修改原对象', () => {
   const data = sample();
-  jqson(data).$('#point-1').attr('text', 'x');
+  jsonjq(data).$('#point-1').attr('text', 'x');
   assert.equal(data.children[1].children[1].text, '0 糖 0 脂');
 
   const live = sample();
-  const doc = jqson(live, { mode: 'inplace' });
+  const doc = jsonjq(live, { mode: 'inplace' });
   doc.$('#point-1').attr('text', 'x');
   assert.equal(live.children[1].children[1].text, 'x');
   assert.equal(doc.root, live);
-  assert.equal(jqson(sample(), { clone: false }).options.mode, 'inplace'); // 旧选项兼容
-  assert.throws(() => jqson({}, { mode: 'nope' }), TypeError);
+  assert.equal(jsonjq(sample(), { clone: false }).options.mode, 'inplace'); // 旧选项兼容
+  assert.throws(() => jsonjq({}, { mode: 'nope' }), TypeError);
 });
 
 test('mode: immutable 结构共享快照', () => {
   const data = sample();
-  const doc = jqson(data, { mode: 'immutable' });
+  const doc = jsonjq(data, { mode: 'immutable' });
   const s0 = doc.state;
   assert.equal(s0, data); // 初始快照就是输入本身
 
@@ -46,13 +46,13 @@ test('mode: immutable 结构共享快照', () => {
   assert.equal(s2.children[0], s0.children[0]);
   assert.equal(Object.getOwnPropertySymbols(s2).length, 0); // 快照是干净的 JSON
 
-  const frozen = jqson(sample(), { mode: 'immutable', freeze: true });
+  const frozen = jsonjq(sample(), { mode: 'immutable', freeze: true });
   frozen.$('#hook').attr('x', 1);
   assert.ok(Object.isFrozen(frozen.state));
 });
 
 test('回调参数与 jQuery 一致：(index, value)，this 指向元素', () => {
-  const doc = jqson(sample());
+  const doc = jsonjq(sample());
   const seen = [];
   doc.$('text').each(function (i, el) {
     seen.push([i, el.id, this === el]);
@@ -71,7 +71,7 @@ test('回调参数与 jQuery 一致：(index, value)，this 指向元素', () =>
 });
 
 test('遍历：nextAll / prevAll / *Until / parentsUntil / addBack / end / index / even / odd', () => {
-  const doc = jqson(sample());
+  const doc = jsonjq(sample());
   assert.deepEqual(ids(doc.$('#detail-1').nextAll()), ['point-1', 'detail-2', 'point-2']);
   assert.deepEqual(ids(doc.$('#point-2').prevAll('image')), ['detail-2', 'detail-1']); // 由近到远
   assert.deepEqual(ids(doc.$('#detail-1').nextUntil('#point-2')), ['point-1', 'detail-2']);
@@ -90,7 +90,7 @@ test('遍历：nextAll / prevAll / *Until / parentsUntil / addBack / end / index
 });
 
 test('css / text / class 函数形式 / removeClass()', () => {
-  const doc = jqson(sample());
+  const doc = jsonjq(sample());
   const t = doc.$('#hook-title');
   assert.equal(t.css('font-size'), 64);
   t.css({ fontSize: 70, 'letter-spacing': 2 }).css('color', (i, c) => c.toUpperCase());
@@ -109,7 +109,7 @@ test('css / text / class 函数形式 / removeClass()', () => {
 });
 
 test('插入已有元素是移动；多个目标时前面的是复制', () => {
-  const doc = jqson(sample());
+  const doc = jsonjq(sample());
   doc.$('#offer').append(doc.$('#point-1'));
   assert.deepEqual(ids(doc.$('#offer').children()), ['price-tag', 'cta-text', 'point-1']);
   assert.equal(doc.$('#point-1').length, 1);
@@ -128,7 +128,7 @@ test('插入已有元素是移动；多个目标时前面的是复制', () => {
 });
 
 test('clone / $(json) 游离元素，可修改后插回', () => {
-  const doc = jqson(sample());
+  const doc = jsonjq(sample());
   const copies = doc.$('#hook-title').clone().attr('id', 'hook-2').addClass('copy').appendTo('#offer');
   assert.deepEqual(ids(copies), ['hook-2']);
   assert.equal(copies.doc, doc);
@@ -141,7 +141,7 @@ test('clone / $(json) 游离元素，可修改后插回', () => {
 });
 
 test('replaceWith / replaceAll / remove(selector) / wrap / wrapAll / wrapInner / unwrap', () => {
-  const doc = jqson(sample());
+  const doc = jsonjq(sample());
   doc.$('#selling > *').remove('image');
   assert.deepEqual(ids(doc.$('#selling').children()), ['point-1', 'point-2']);
 
@@ -166,18 +166,18 @@ test('replaceWith / replaceAll / remove(selector) / wrap / wrapAll / wrapInner /
   assert.deepEqual(doc.toJSON(), sample());
 });
 
-test('jqson.fn 插件扩展', () => {
-  jqson.fn.shift = function (dt) {
+test('jsonjq.fn 插件扩展', () => {
+  jsonjq.fn.shift = function (dt) {
     return this.attr('start', (i, v) => v + dt);
   };
-  const doc = jqson(sample());
+  const doc = jsonjq(sample());
   doc.$('#offer > *').shift(1);
   assert.deepEqual(doc.$('#offer > *').pluck('start'), [8.4, 8.6]);
-  delete jqson.fn.shift;
+  delete jsonjq.fn.shift;
 });
 
 test('immutable 模式下并行合并后快照仍共享未改动部分', async () => {
-  const doc = jqson(sample(), { mode: 'immutable' });
+  const doc = jsonjq(sample(), { mode: 'immutable' });
   const s0 = doc.state;
   await parallel(doc, [async (f) => f.$('#cta-text').attr('text', 'A'), { script: "$('#point-1').attr('text', 'B')" }]);
   const s1 = doc.state;

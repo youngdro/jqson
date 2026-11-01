@@ -1,5 +1,5 @@
 // 视频工程的校验器示例：在每次提交前运行，返回错误数组则整次修改回滚。
-// 用法：jqson run project.json edit.js --lint examples/video-lint.js
+// 用法：jsonjq run project.json edit.js --lint examples/video-lint.js
 
 const MAX_CHARS = { 'caption-band': 14, 'price-band': 10 };
 

@@ -1,7 +1,7 @@
 // 打包器测试用的页面脚本：在 worker 里跑两个脚本任务，结果写到 window.__result
-import jqson, { parallel } from 'jqson';
+import jsonjq, { parallel } from 'jsonjq';
 
-const doc = jqson({
+const doc = jsonjq({
   type: 'project',
   id: 'p',
   children: [{ type: 'segment', id: 's1', children: [{ type: 'text', id: 't1', start: 1 }, { type: 'text', id: 't2', start: 2 }] }],

@@ -1,8 +1,8 @@
 <!doctype html>
 <meta charset="utf-8" />
-<title>jqson browser smoke test</title>
+<title>jsonjq browser smoke test</title>
 <script type="module">
-  import jqson, { parallel, createPool, runScript, help, explain, applyPatchTo } from '/src/index.js';
+  import jsonjq, { parallel, createPool, runScript, help, explain, applyPatchTo } from '/src/index.js';
 
   const results = [];
   const check = (name, ok, detail) => results.push({ name, ok: !!ok, detail });
@@ -10,7 +10,7 @@
   try {
     const data = await (await fetch('/examples/video-project.json')).json();
 
-    const doc = jqson(data);
+    const doc = jsonjq(data);
     check('selectors', doc.$('segment#selling > text').pluck('id').join() === 'point-1,point-2');
     doc.$('text').attr('start', (i, v) => v + 1).addClass('w');
     check('jquery callbacks', doc.get('#hook-title').start === 1.2 && doc.$('.w').length === 4);
@@ -21,7 +21,7 @@
     while (doc.undo());
     check('undo all', JSON.stringify(doc.toJSON()) === JSON.stringify(data));
 
-    const im = jqson(data, { mode: 'immutable' });
+    const im = jsonjq(data, { mode: 'immutable' });
     const s0 = im.state;
     im.$('#point-1').text('x');
     const s1 = im.state;

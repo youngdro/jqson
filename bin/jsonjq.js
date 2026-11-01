@@ -1,23 +1,23 @@
 #!/usr/bin/env node
-// jqson 命令行：给 Agent 用的“一次脚本、原子提交”入口。
+// jsonjq 命令行：给 Agent 用的“一次脚本、原子提交”入口。
 //
-//   jqson help    [topic|api] [--json]
-//   jqson skill   [--json]          输出随包附带的 Agent skill（SKILL.md）
-//   jqson inspect <file.json> [--depth n] [--limit n]
-//   jqson explain "<selector>" [file.json]
-//   jqson exec    <file.json> <commands.json | -> [--ops json] [--lint a.js] [--dry-run] [--write | --out file]
-//   jqson schema  输出 exec 指令的 JSON Schema（给工具调用用）
-//   jqson query <file.json> <selector> [--pluck path] [--paths] [--count]
-//   jqson run   <file.json> <script.js ...> [-e code] [--args json] [--lint lint.js]
+//   jsonjq help    [topic|api] [--json]
+//   jsonjq skill   [--json]          输出随包附带的 Agent skill（SKILL.md）
+//   jsonjq inspect <file.json> [--depth n] [--limit n]
+//   jsonjq explain "<selector>" [file.json]
+//   jsonjq exec    <file.json> <commands.json | -> [--ops json] [--lint a.js] [--dry-run] [--write | --out file]
+//   jsonjq schema  输出 exec 指令的 JSON Schema（给工具调用用）
+//   jsonjq query <file.json> <selector> [--pluck path] [--paths] [--count]
+//   jsonjq run   <file.json> <script.js ...> [-e code] [--args json] [--lint lint.js]
 //                 [--parallel] [--threads n] [--write | --out file] [--patch file]
-//   jqson patch <file.json> <patch.json> [--write | --out file]
+//   jsonjq patch <file.json> <patch.json> [--write | --out file]
 //
 // 所有命令向 stdout 输出一行 JSON，便于 Agent 解析；失败时 ok 为 false，退出码 1。
 
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { jqson, runScript, parallel, help, inspect, explain, exec, execSchema, ExecError, ValidationError, ConflictError, SelectorError } from '../src/index.js';
+import { jsonjq, runScript, parallel, help, inspect, explain, exec, execSchema, ExecError, ValidationError, ConflictError, SelectorError } from '../src/index.js';
 
 const argv = process.argv.slice(2);
 const cmd = argv.shift();
@@ -52,19 +52,19 @@ function fail(e) {
     if (e.expected !== undefined) Object.assign(r, { expected: e.expected, actual: e.actual });
   } else if (e?.commandIndex !== undefined) r.command = e.commandIndex;
   r.hint = e instanceof SelectorError
-    ? `jqson explain "${e.selector}"；jqson help selectors`
+    ? `jsonjq explain "${e.selector}"；jsonjq help selectors`
     : e instanceof ValidationError
       ? '修改未生效。按 errors 调整后重试'
       : e instanceof ConflictError
-        ? '与其他修改冲突，未生效。jqson help parallel'
+        ? '与其他修改冲突，未生效。jsonjq help parallel'
         : e instanceof ExecError
-          ? '整批指令未生效。jqson help exec 查看指令格式'
-          : 'jqson help 查看用法';
+          ? '整批指令未生效。jsonjq help exec 查看指令格式'
+          : 'jsonjq help 查看用法';
   out(r, 1);
 }
 
 function load(file) {
-  return jqson(JSON.parse(fs.readFileSync(file, 'utf8')));
+  return jsonjq(JSON.parse(fs.readFileSync(file, 'utf8')));
 }
 
 function save(doc, file, f) {
@@ -93,18 +93,18 @@ try {
     process.stdout.write(help(q));
     process.exit(0);
   } else if (cmd === 'skill') {
-    const file = new URL('../skills/jqson/SKILL.md', import.meta.url);
+    const file = new URL('../skills/jsonjq/SKILL.md', import.meta.url);
     if (f.json) out({ ok: true, path: file.pathname });
     process.stdout.write(fs.readFileSync(file, 'utf8'));
     process.exit(0);
   } else if (cmd === 'inspect') {
     const [file] = pos;
-    if (!file) throw new Error('用法: jqson inspect <file.json> [--depth n] [--limit n]');
+    if (!file) throw new Error('用法: jsonjq inspect <file.json> [--depth n] [--limit n]');
     const r = inspect(load(file), { depth: f.depth ? Number(f.depth) : undefined, limit: f.limit ? Number(f.limit) : undefined });
     out({ ok: true, ...r, ms: +(performance.now() - t0).toFixed(2) });
   } else if (cmd === 'explain') {
     const [sel, file] = pos;
-    if (!sel) throw new Error('用法: jqson explain "<selector>" [file.json]');
+    if (!sel) throw new Error('用法: jsonjq explain "<selector>" [file.json]');
     const r = explain(sel);
     if (r.ok && file) {
       const s = load(file).$(sel);
@@ -155,7 +155,7 @@ try {
   } else if (cmd === 'exec') {
     // 声明式指令：不执行代码。指令来自文件、- (stdin) 或 --ops '<json>'
     const [file, opsFile] = pos;
-    if (!file) throw new Error('用法: jqson exec <file.json> <commands.json | -> [--ops json] [--lint a.js] [--dry-run] [--write | --out file] [--patch file]');
+    if (!file) throw new Error('用法: jsonjq exec <file.json> <commands.json | -> [--ops json] [--lint a.js] [--dry-run] [--write | --out file] [--patch file]');
     const text = f.ops ?? (opsFile === '-' ? fs.readFileSync(0, 'utf8') : opsFile ? fs.readFileSync(opsFile, 'utf8') : null);
     if (text === null) throw new Error('缺少指令：给出 commands.json、- 或 --ops');
     const doc = load(file);
@@ -173,7 +173,7 @@ try {
     out({ ok: true, saved: save(doc, file, f), ms: +(performance.now() - t0).toFixed(2) });
   } else {
     const near = COMMANDS.filter((c) => c[0] === cmd[0] || c.includes(cmd));
-    out({ ok: false, error: `未知命令 "${cmd}"`, commands: COMMANDS, ...(near.length ? { didYouMean: near } : {}), hint: 'jqson help' }, 1);
+    out({ ok: false, error: `未知命令 "${cmd}"`, commands: COMMANDS, ...(near.length ? { didYouMean: near } : {}), hint: 'jsonjq help' }, 1);
   }
 } catch (e) {
   fail(e);

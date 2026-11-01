@@ -177,7 +177,7 @@ export function exec(doc, commands, { dryRun = false } = {}) {
 /** 给 Agent 工具调用（function calling）用的 JSON Schema */
 export const execSchema = {
   $schema: 'https://json-schema.org/draft/2020-12/schema',
-  title: 'jqson exec commands',
+  title: 'jsonjq exec commands',
   description:
     '对 JSON 文档执行的一批声明式指令（jQuery for JSON），整体原子执行。每条指令用 "$" 选中元素，再按顺序调用方法；参数只能是 JSON。',
   type: 'array',

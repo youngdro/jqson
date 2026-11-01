@@ -26,13 +26,13 @@ JsonDoc.prototype.syncTo = function (target, options) {
   return syncTo(this, target, options);
 };
 
-/** 创建文档：const doc = jqson(json); doc.$('clip.caption').attr('style.color', '#fff') */
-export function jqson(data, options) {
+/** 创建文档：const doc = jsonjq(json); doc.$('clip.caption').attr('style.color', '#fff') */
+export function jsonjq(data, options) {
   return new JsonDoc(data, options);
 }
 
-/** 插件扩展点，同 jQuery.fn：jqson.fn.myMethod = function () { return this } */
-jqson.fn = Selection.prototype;
+/** 插件扩展点，同 jQuery.fn：jsonjq.fn.myMethod = function () { return this } */
+jsonjq.fn = Selection.prototype;
 export const fn = Selection.prototype;
 
-export default jqson;
+export default jsonjq;

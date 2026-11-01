@@ -1,5 +1,5 @@
 // 性能基准：node bench/bench.js [段数] [每段元素数]
-import { jqson, parallel } from '../src/index.js';
+import { jsonjq, parallel } from '../src/index.js';
 
 const SEGMENTS = Number(process.argv[2] || 200);
 const PER = Number(process.argv[3] || 500);
@@ -37,7 +37,7 @@ function time(label, fn, runs = 5) {
 
 const data = make();
 let doc;
-time('建文档（深拷贝 + 建索引）', () => (doc = jqson(data)), 3);
+time('建文档（深拷贝 + 建索引）', () => (doc = jsonjq(data)), 3);
 console.log(`元素数 ${doc.size.toLocaleString()}\n`);
 
 time('#s150-e321（id 索引）', () => doc.$('#s150-e321').length);

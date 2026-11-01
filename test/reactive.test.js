@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import jqson, { applyPatchTo } from '../src/index.js';
+import jsonjq, { applyPatchTo } from '../src/index.js';
 
 const sample = () => JSON.parse(fs.readFileSync(new URL('../examples/video-project.json', import.meta.url), 'utf8'));
 
@@ -52,11 +52,11 @@ function observable(obj, log, onChange, copyOnWrite = false) {
 }
 
 test('元数据不可枚举：展开、Object.assign 不会带走；展开出的副本不会被当成文档里的元素', () => {
-  const doc = jqson(sample(), { mode: 'inplace' });
+  const doc = jsonjq(sample(), { mode: 'inplace' });
   const n = doc.get('#point-1');
   assert.equal(Object.getOwnPropertySymbols({ ...n }).length, 0);
   assert.deepEqual(Object.keys(n), ['type', 'id', 'class', 'text', 'zone', 'start', 'duration', 'style', 'motion']);
-  const copyDoc = jqson(sample());
+  const copyDoc = jsonjq(sample());
   const copy = { ...copyDoc.get('#point-1'), id: 'p1-copy' };
   const fresh = copyDoc.$(copy).appendTo('#offer'); // 展开得到的对象当作新 JSON 插入
   assert.equal(fresh.attr('id'), 'p1-copy');
@@ -66,7 +66,7 @@ test('元数据不可枚举：展开、Object.assign 不会带走；展开出的
 test('inplace 作用在代理上：建文档不产生任何写通知', () => {
   const log = [];
   const state = observable(sample(), log);
-  jqson(state, { mode: 'inplace' });
+  jsonjq(state, { mode: 'inplace' });
   assert.deepEqual(log, []);
 });
 
@@ -76,7 +76,7 @@ test('观察者在修改中途抛错，事务仍能完整回滚', () => {
   const state = observable(sample(), log, () => {
     if (armed) throw new Error('observer failed');
   });
-  const doc = jqson(state, { mode: 'inplace' });
+  const doc = jsonjq(state, { mode: 'inplace' });
   const before = JSON.stringify(doc.root);
   armed = true;
   assert.throws(() => doc.$('#point-1').appendTo('#offer'), /observer failed/);
@@ -93,7 +93,7 @@ test('观察者在修改中途抛错，事务仍能完整回滚', () => {
 test('syncTo：只把提交后的精确改动推给响应式对象，且每次提交一批', () => {
   const log = [];
   const store = observable(sample(), log);
-  const doc = jqson(sample());
+  const doc = jsonjq(sample());
   const batches = [];
   const stop = doc.syncTo(store, { batch: (fn) => { batches.push(log.length); fn(); } });
   doc.$('#point-1').text('零糖').css('fontSize', 50);
@@ -124,12 +124,12 @@ test('applyPatchTo 支持全部 RFC 6902 操作', () => {
   assert.deepEqual(t, { a: [2, 3], d: { c: 2 }, e: 1 });
 });
 
-test('像 MobX 那样赋值时替换对象：jqson 会改用实际存进去的对象', () => {
+test('像 MobX 那样赋值时替换对象：jsonjq 会改用实际存进去的对象', () => {
   const log = [];
   const raw = sample();
   const state = observable(raw, log, null, true);
   const batches = [];
-  const doc = jqson(state, { mode: 'inplace', batch: (run) => { batches.push(1); return run(); } });
+  const doc = jsonjq(state, { mode: 'inplace', batch: (run) => { batches.push(1); return run(); } });
   const added = doc.$('#offer').insert({ type: 'text', id: 'n1', text: 'a' });
   added.attr('text', 'b').css('color', 'red');
   assert.equal(raw.children[2].children[2].text, 'b');

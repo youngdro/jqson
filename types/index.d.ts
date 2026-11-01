@@ -1,4 +1,4 @@
-// jqson 类型声明：jQuery for JSON
+// jsonjq 类型声明：jQuery for JSON
 
 /** 文档中的元素：带 type 或 id 字段的普通对象（可通过选项改变判定方式） */
 export type JsonNode = { [key: string]: any };
@@ -339,9 +339,9 @@ export function publicOp(op: InternalOp): PatchOp;
 /** 插件扩展点，同 jQuery.fn */
 export const fn: Selection & Record<string, any>;
 
-export interface Jqson {
+export interface Jsonjq {
   <T extends JsonNode>(data: T, options?: Options): JsonDoc<T>;
   fn: Selection & Record<string, any>;
 }
-export const jqson: Jqson;
-export default jqson;
+export const jsonjq: Jsonjq;
+export default jsonjq;

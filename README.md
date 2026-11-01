@@ -1,17 +1,17 @@
-# jqson
+# jsonjq
 
 中文 | [English](README.en.md)
 
 **jQuery for JSON**：用 CSS 选择器和 jQuery 式的链式方法读写任意 JSON，带事务、校验、撤销、变更流，以及基于 fork/merge 的并行修改。零依赖，同一份代码在**浏览器**和 **Node** 中运行。
 
 ```bash
-npm i jqson          # 全局安装可直接用命令：npm i -g jqson && jqson help
+npm i jsonjq          # 全局安装可直接用命令：npm i -g jsonjq && jsonjq help
 ```
 
 ```js
-import jqson from 'jqson';
+import jsonjq from 'jsonjq';
 
-const doc = jqson(project);                       // 深拷贝一次并建索引
+const doc = jsonjq(project);                       // 深拷贝一次并建索引
 doc.$('segment#hook text').attr('style.color', '#ff3b30');
 doc.$('text[zone=price-band]').addClass('pulse');
 doc.$('#selling').append({ type: 'image', id: 'detail-3', src: 'c.png', start: 6, duration: 2 });
@@ -23,21 +23,21 @@ doc.undo();
 包内置了全部用法说明和数据探索命令，Agent 安装后可以自己学会怎么用，见 [AGENTS.md](AGENTS.md)。
 
 ```bash
-jqson help                      # 总览与 API 一览；jqson help <主题|API名>，--json 输出结构化
-jqson inspect data.json         # 标签、字段（类型与示例值）、id、class、结构大纲、推荐选择器
-jqson explain "segment > text[start>=2]" data.json   # 中文解释 + 匹配数 + 路径；语法错误指出位置
+jsonjq help                      # 总览与 API 一览；jsonjq help <主题|API名>，--json 输出结构化
+jsonjq inspect data.json         # 标签、字段（类型与示例值）、id、class、结构大纲、推荐选择器
+jsonjq explain "segment > text[start>=2]" data.json   # 中文解释 + 匹配数 + 路径；语法错误指出位置
 ```
 
 ```js
-import { help, inspect, explain } from 'jqson';
+import { help, inspect, explain } from 'jsonjq';
 help('attr');  help.json('parallel');  help.api();
 inspect(doc);  doc.describe();  explain('text:has(> image)');
 ```
 
-仓库和 npm 包都附带一份 Agent skill（`skills/jqson/SKILL.md`），与代码一起维护。装进 Claude Code 项目：
+仓库和 npm 包都附带一份 Agent skill（`skills/jsonjq/SKILL.md`），与代码一起维护。装进 Claude Code 项目：
 
 ```bash
-mkdir -p .claude/skills/jqson && jqson skill > .claude/skills/jqson/SKILL.md
+mkdir -p .claude/skills/jsonjq && jsonjq skill > .claude/skills/jsonjq/SKILL.md
 ```
 
 CLI 出错时返回 `hint` 字段，告诉 Agent 下一步该查什么；`help` 拼错会给出相近建议。
@@ -92,25 +92,25 @@ s.remove(sel?) / s.empty() / s.replaceWith(v) / s.replaceAll(target)
 s.clone().attr('id', 'b').insertAfter('#a')   // 复制、改、插回
 doc.$({ type: 'image', id: 'logo' }).appendTo('#hero')   // 新建元素
 s.wrapAll({ type: 'group', id: 'g1' }) / s.wrap / s.wrapInner / s.unwrap()
-s.set(path, value) / s.merge(obj, path?) / s.insert(content)   // jqson 扩展
+s.set(path, value) / s.merge(obj, path?) / s.insert(content)   // jsonjq 扩展
 ```
 
 - `append` 默认放进 `children`（不存在会创建），第二个参数可指定其他数组字段。
 - 把文档里已有的元素 append 到别处是**移动**；多个目标时前面的得到复制品（同 jQuery）。
-- 插件：`jqson.fn.shift = function (dt) { return this.attr('start', (i, v) => v + dt) }`。
+- 插件：`jsonjq.fn.shift = function (dt) { return this.attr('start', (i, v) => v + dt) }`。
 
 ## 3.1 三种模式
 
 ```js
-jqson(data)                          // mode: 'copy'（默认）：深拷贝一次，原数据不受影响
-jqson(data, { mode: 'inplace' })     // 直接修改传入的对象，只有一份数据；之后只能通过 jqson 改它
-jqson(data, { mode: 'immutable' })   // copy + 结构共享的不可变快照
+jsonjq(data)                          // mode: 'copy'（默认）：深拷贝一次，原数据不受影响
+jsonjq(data, { mode: 'inplace' })     // 直接修改传入的对象，只有一份数据；之后只能通过 jsonjq 改它
+jsonjq(data, { mode: 'immutable' })   // copy + 结构共享的不可变快照
 ```
 
 `immutable` 模式下 `doc.state` 初始就是传入的 `data`；每次提交后只有改动路径上的对象换新引用，其余与上一个快照共享，适合 React / Vue 等按引用比较的框架：
 
 ```js
-const doc = jqson(project, { mode: 'immutable' });
+const doc = jsonjq(project, { mode: 'immutable' });
 doc.on((e) => setState(e.state));    // e.state 即 doc.state
 doc.$('#point-1').text('零糖');       // 只有 #point-1、#selling、根 是新对象
 ```
@@ -119,19 +119,19 @@ doc.$('#point-1').text('零糖');       // 只有 #point-1、#selling、根 是�
 
 ## 3.2 配合 Vue / MobX 等响应式数据
 
-推荐让 jqson 持有自己的数据，每次提交后用 JSON Patch 逐字段推给响应式对象：
+推荐让 jsonjq 持有自己的数据，每次提交后用 JSON Patch 逐字段推给响应式对象：
 
 ```js
-const doc = jqson(toRaw(state));                // Vue；MobX 用 toJS(store)
+const doc = jsonjq(toRaw(state));                // Vue；MobX 用 toJS(store)
 doc.syncTo(state);                              // Vue
 doc.syncTo(store, { batch: runInAction });      // MobX：一次提交只触发一次反应，严格模式也不报警
 ```
 
-只有真正改动的字段触发更新，观察者看不到事务中间状态，jqson 的读取也不经过代理。
+只有真正改动的字段触发更新，观察者看不到事务中间状态，jsonjq 的读取也不经过代理。
 
-也可以用 `inplace` 直接作用在响应式对象上：`jqson(state, { mode: 'inplace' })`，MobX 再加 `batch: runInAction`。这个模式不往对象上写任何内部字段（元数据放在 WeakMap），建文档不会触发更新；MobX、Valtio 赋值时把对象换成代理副本的情况也已处理；观察者抛错时事务会完整回滚。代价是所有读取都经过代理，比 `syncTo` 慢。
+也可以用 `inplace` 直接作用在响应式对象上：`jsonjq(state, { mode: 'inplace' })`，MobX 再加 `batch: runInAction`。这个模式不往对象上写任何内部字段（元数据放在 WeakMap），建文档不会触发更新；MobX、Valtio 赋值时把对象换成代理副本的情况也已处理；观察者抛错时事务会完整回滚。代价是所有读取都经过代理，比 `syncTo` 慢。
 
-已用 @vue/reactivity 3.5 和 MobX 6.13 实测。详见 `jqson help reactive`。
+已用 @vue/reactivity 3.5 和 MobX 6.13 实测。详见 `jsonjq help reactive`。
 
 ## 4. 事务、校验、撤销、监听
 
@@ -170,7 +170,7 @@ doc.merge(a, { policy: 'throw' | 'skip' | 'force' });
 `parallel(doc, tasks, opts)` 同时跑多个任务，结束后依次合并：
 
 ```js
-import { parallel, createPool } from 'jqson';
+import { parallel, createPool } from 'jsonjq';
 
 const reports = await parallel(doc, [
   // 函数任务：当前线程、各自 fork，适合等模型/网络（I/O 并发）
@@ -219,15 +219,15 @@ const reports = await parallel(doc, [
 - 不允许：`each` / `map` 等需要函数的方法、未知方法、未知的 `$` 运算，都会报错并指出第几条。
 
 ```bash
-jqson exec project.json cmds.json --dry-run          # 先预览补丁
-jqson exec project.json cmds.json --lint rules.js --write
-echo '[{"$":"#hook","attr":["x",1]}]' | jqson exec project.json -
-jqson schema                                          # JSON Schema，直接作为工具调用的参数定义
+jsonjq exec project.json cmds.json --dry-run          # 先预览补丁
+jsonjq exec project.json cmds.json --lint rules.js --write
+echo '[{"$":"#hook","attr":["x",1]}]' | jsonjq exec project.json -
+jsonjq schema                                          # JSON Schema，直接作为工具调用的参数定义
 ```
 
 ```js
 const { results, patch } = doc.exec(commands, { dryRun: true });
-import { execSchema } from 'jqson';   // 交给模型的工具定义
+import { execSchema } from 'jsonjq';   // 交给模型的工具定义
 ```
 
 **案例：商品视频批量改价并突出卖点**
@@ -252,11 +252,11 @@ import { execSchema } from 'jqson';   // 交给模型的工具定义
 
 ### 6.2 JSON Patch
 
-标准 RFC 6902 格式。先用 `jqson query <file> <sel> --paths` 拿到路径，再生成补丁：
+标准 RFC 6902 格式。先用 `jsonjq query <file> <sel> --paths` 拿到路径，再生成补丁：
 
 ```bash
-jqson query project.json "#point-1" --paths      # → ["/children/1/children/1"]
-jqson patch project.json changes.json --out next.json
+jsonjq query project.json "#point-1" --paths      # → ["/children/1/children/1"]
+jsonjq patch project.json changes.json --out next.json
 ```
 
 ```json
@@ -268,7 +268,7 @@ jqson patch project.json changes.json --out next.json
 ### 6.3 脚本（仅限可信环境）
 
 ```js
-import { runScript } from 'jqson';
+import { runScript } from 'jsonjq';
 await runScript(doc, `
   for (const seg of $('segment')) {
     const texts = $(seg).find('text');
@@ -280,20 +280,20 @@ await runScript(doc, `
 
 脚本中可用 `$`、`doc`、`args`，可以 `await`，适合需要循环、条件判断、复杂计算的场景。
 
-> **安全提示**：`runScript`、`parallel` 的脚本任务和命令行 `jqson run` 执行的是任意 JavaScript，**没有沙箱**，权限与当前进程（或 worker）相同，可以读写文件、访问网络。只运行你信任的代码，例如你自己的 Agent 在受控环境中生成的脚本；不要直接执行来自用户输入或第三方的代码。需要隔离时，把它放进容器、受限的子进程或浏览器 iframe 中运行。
+> **安全提示**：`runScript`、`parallel` 的脚本任务和命令行 `jsonjq run` 执行的是任意 JavaScript，**没有沙箱**，权限与当前进程（或 worker）相同，可以读写文件、访问网络。只运行你信任的代码，例如你自己的 Agent 在受控环境中生成的脚本；不要直接执行来自用户输入或第三方的代码。需要隔离时，把它放进容器、受限的子进程或浏览器 iframe 中运行。
 
 ## 7. 命令行
 
 ```bash
-jqson help [主题|API] [--json]
-jqson inspect examples/video-project.json
-jqson explain "segment > text" examples/video-project.json
-jqson query examples/video-project.json "text[zone=caption-band]" --pluck text
-jqson exec  project.json cmds.json [--ops json] [--dry-run] [--lint rules.js] [--write | --out file] [--patch file]
-jqson schema
-jqson run   project.json edit.js -e "$('video').attr('muted', true)" --lint examples/video-lint.js --write
-jqson run   project.json a.js b.js --parallel --threads 4 --patch out.patch.json
-jqson patch project.json out.patch.json --out next.json
+jsonjq help [主题|API] [--json]
+jsonjq inspect examples/video-project.json
+jsonjq explain "segment > text" examples/video-project.json
+jsonjq query examples/video-project.json "text[zone=caption-band]" --pluck text
+jsonjq exec  project.json cmds.json [--ops json] [--dry-run] [--lint rules.js] [--write | --out file] [--patch file]
+jsonjq schema
+jsonjq run   project.json edit.js -e "$('video').attr('muted', true)" --lint examples/video-lint.js --write
+jsonjq run   project.json a.js b.js --parallel --threads 4 --patch out.patch.json
+jsonjq patch project.json out.patch.json --out next.json
 ```
 
 输出始终是一行 JSON（`ok`、`count`/`values`、`changes`、`conflicts`、`ms`）；失败时退出码 1，带 `errors`（校验）、`conflicts`（冲突）或 `command`（exec 中出错的指令序号），以及 `hint`（下一步查什么）。
@@ -302,7 +302,7 @@ jqson patch project.json out.patch.json --out next.json
 
 ```html
 <script type="module">
-  import jqson, { parallel } from './jqson/src/index.js';
+  import jsonjq, { parallel } from './jsonjq/src/index.js';
 </script>
 ```
 
@@ -311,7 +311,7 @@ jqson patch project.json out.patch.json --out next.json
 - **Vite**：`vite build` 不用配置。开发服务器会预构建依赖，导致找不到 worker 文件，需要排除：
   ```js
   // vite.config.js
-  export default { optimizeDeps: { exclude: ['jqson'] } };
+  export default { optimizeDeps: { exclude: ['jsonjq'] } };
   ```
 - **webpack 5**：不用配置。入口里用了顶层 await 的话打开 `experiments.topLevelAwait`（webpack 5.83 起默认开启）。
 
@@ -350,9 +350,9 @@ src/worker.js     浏览器与 Node 共用的 worker 入口
 src/help.js       内置文档 help()、数据概况 inspect()、选择器解释 explain()
 src/exec.js       exec()：声明式指令与 JSON Schema
 src/sync.js       syncTo()、applyPatchTo()：同步到 Vue / MobX 等响应式数据
-bin/jqson.js      命令行
+bin/jsonjq.js      命令行
 types/            TypeScript 类型声明
-skills/jqson/     随包附带的 Agent skill
+skills/jsonjq/     随包附带的 Agent skill
 examples/         视频工程示例与校验器
 docs/             jQuery 对照表等文档
 ```

@@ -1,8 +1,8 @@
-// 把 jqson 的改动同步到外部的响应式数据（Vue reactive、MobX observable、Valtio proxy 等）。
+// 把 jsonjq 的改动同步到外部的响应式数据（Vue reactive、MobX observable、Valtio proxy 等）。
 //
-// 推荐做法：jqson 持有自己的数据（默认 copy 模式），UI 使用的响应式对象只通过 JSON Patch 接收改动。
+// 推荐做法：jsonjq 持有自己的数据（默认 copy 模式），UI 使用的响应式对象只通过 JSON Patch 接收改动。
 // 这样响应式系统只在事务提交后收到一批精确到字段的修改，不会看到事务中间状态，
-// 也不会被 jqson 的内部元数据或读取开销干扰。
+// 也不会被 jsonjq 的内部元数据或读取开销干扰。
 
 import { cloneJson } from './doc.js';
 
