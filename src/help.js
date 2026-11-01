@@ -93,7 +93,7 @@ const TOPICS = {
   2. 试选择器    explain(sel); doc.$(sel)  或 jsondom explain "<sel>" file.json
   3. 改          runScript(doc, code)      或 jsondom run file.json -e "<code>"
 
-  import jsondom, { runScript, parallel, help, inspect, explain } from 'jsondom';
+  import jsondom, { runScript, parallel, help, inspect, explain } from '@youngdro/jsondom';
   const doc = jsondom(data);
   doc.$('segment#offer text').attr('text', '立即抢购').addClass('pulse');
   doc.undo();

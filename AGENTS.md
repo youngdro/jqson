@@ -10,7 +10,7 @@ npx jsondom inspect data.json    # 看数据：有哪些标签、字段、id、c
 npx jsondom explain "<sel>" data.json   # 解释选择器，返回匹配数和路径；语法错误会指出位置
 ```
 
-在代码里同样可用：`import { help, inspect, explain } from 'jsondom'`，`doc.describe()`，`doc.help('merge')`。
+在代码里同样可用：`import { help, inspect, explain } from '@youngdro/jsondom'`，`doc.describe()`，`doc.help('merge')`。
 
 ## 推荐流程
 

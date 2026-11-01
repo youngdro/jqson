@@ -2,8 +2,12 @@
 
 用 CSS 选择器 + jQuery/DOM 式操作来读写任意 JSON，带事务、校验、撤销、变更流，以及基于 fork/merge 的并行修改。零依赖，同一份代码在**浏览器**和 **Node** 中运行。
 
+```bash
+npm i @youngdro/jsondom      # 命令行名仍为 jsondom：npx jsondom help
+```
+
 ```js
-import jsondom from 'jsondom';
+import jsondom from '@youngdro/jsondom';
 
 const doc = jsondom(project);                       // 深拷贝一次并建索引
 doc.$('segment#hook text').attr('style.color', '#ff3b30');
@@ -23,7 +27,7 @@ jsondom explain "segment > text[start>=2]" data.json   # 中文解释 + 匹配�
 ```
 
 ```js
-import { help, inspect, explain } from 'jsondom';
+import { help, inspect, explain } from '@youngdro/jsondom';
 help('attr');  help.json('parallel');  help.api();
 inspect(doc);  doc.describe();  explain('text:has(> image)');
 ```
@@ -114,7 +118,7 @@ doc.merge(a, { policy: 'throw' | 'skip' | 'force' });
 `parallel(doc, tasks, opts)` 同时跑多个任务，结束后依次合并：
 
 ```js
-import { parallel, createPool } from 'jsondom';
+import { parallel, createPool } from '@youngdro/jsondom';
 
 const reports = await parallel(doc, [
   // 函数任务：当前线程、各自 fork，适合等模型/网络（I/O 并发）
@@ -133,7 +137,7 @@ const reports = await parallel(doc, [
 ## 6. 脚本运行器（给 Agent 用）
 
 ```js
-import { runScript } from 'jsondom';
+import { runScript } from '@youngdro/jsondom';
 await runScript(doc, `
   const t = $('segment#offer text');
   t.attr('text', args.cta).addClass('pulse');

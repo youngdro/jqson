@@ -1,5 +1,5 @@
 {
-  "name": "jsondom",
+  "name": "@youngdro/jsondom",
   "version": "0.2.0",
   "description": "像操作 DOM 一样操作 JSON：CSS 选择器查询、链式修改、事务回滚、变更流、fork/merge 并行。浏览器和 Node 通用，零依赖。",
   "type": "module",
@@ -35,5 +35,16 @@
     "patch",
     "agent",
     "parallel"
-  ]
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/youngdro/jsondom.git"
+  },
+  "homepage": "https://github.com/youngdro/jsondom#readme",
+  "bugs": {
+    "url": "https://github.com/youngdro/jsondom/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
 }
