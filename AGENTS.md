@@ -10,6 +10,8 @@ npx jqson inspect data.json    # 看数据：有哪些标签、字段、id、cla
 npx jqson explain "<sel>" data.json   # 解释选择器，返回匹配数和路径；语法错误会指出位置
 ```
 
+随包附带一份 Agent skill：`jqson skill` 输出内容，源文件在 `skills/jqson/SKILL.md`。
+
 在代码里同样可用：`import { help, inspect, explain } from 'jqson'`，`doc.describe()`，`doc.help('merge')`。
 
 ## 推荐流程

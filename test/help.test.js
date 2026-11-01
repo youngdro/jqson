@@ -53,4 +53,14 @@ test('cli: help / inspect / explain', () => {
   assert.match(execFileSync('node', [bin, 'help', 'run'], { encoding: 'utf8' }), /jqson run/);
   assert.equal(JSON.parse(execFileSync('node', [bin, 'inspect', file])).tags.image.count, 2);
   assert.equal(JSON.parse(execFileSync('node', [bin, 'explain', 'segment > text', file])).count, 4);
+  assert.match(execFileSync('node', [bin, 'skill'], { encoding: 'utf8' }), /^---\nname: jqson\n/);
+});
+
+test('skill: every API and CLI command it mentions exists', () => {
+  const md = fs.readFileSync(new URL('../skills/jqson/SKILL.md', import.meta.url), 'utf8');
+  const names = new Set(help.api().map((a) => a.name.replace(/^cli:/, '')));
+  const code = [...md.matchAll(/```[\s\S]*?```|`[^`\n]+`/g)].map((m) => m[0]).join('\n');
+  for (const [, cmd] of code.matchAll(/\bjqson (\w+)/g)) assert.ok(names.has(cmd), `jqson ${cmd}`);
+  for (const m of ['attr', 'set', 'merge', 'removeAttr', 'addClass', 'append', 'insert', 'remove', 'appendTo', 'transaction', 'use', 'undo', 'parallel', 'runScript'])
+    if (md.includes(m)) assert.ok(names.has(m), m);
 });

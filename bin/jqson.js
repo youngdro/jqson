@@ -2,6 +2,7 @@
 // jqson 命令行：给 Agent 用的“一次脚本、原子提交”入口。
 //
 //   jqson help    [topic|api] [--json]
+//   jqson skill   [--json]          输出随包附带的 Agent skill（SKILL.md）
 //   jqson inspect <file.json> [--depth n] [--limit n]
 //   jqson explain "<selector>" [file.json]
 //   jqson query <file.json> <selector> [--pluck path] [--paths] [--count]
@@ -73,7 +74,7 @@ async function loadValidators(doc, spec) {
   }
 }
 
-const COMMANDS = ['help', 'inspect', 'explain', 'query', 'run', 'patch'];
+const COMMANDS = ['help', 'skill', 'inspect', 'explain', 'query', 'run', 'patch'];
 
 try {
   const { pos, f } = flags(argv);
@@ -82,6 +83,11 @@ try {
     const q = pos.join(' ');
     if (f.json) out(help.json(q));
     process.stdout.write(help(q));
+    process.exit(0);
+  } else if (cmd === 'skill') {
+    const file = new URL('../skills/jqson/SKILL.md', import.meta.url);
+    if (f.json) out({ ok: true, path: file.pathname });
+    process.stdout.write(fs.readFileSync(file, 'utf8'));
     process.exit(0);
   } else if (cmd === 'inspect') {
     const [file] = pos;

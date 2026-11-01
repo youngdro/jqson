@@ -74,6 +74,7 @@ const API = [
 
   // 命令行
   { name: 'cli:help', on: 'cli', sig: 'jqson help [topic|api] [--json]', desc: '查看内置文档。' },
+  { name: 'cli:skill', on: 'cli', sig: 'jqson skill [--json]', desc: '输出随包附带的 Agent skill（SKILL.md）；--json 只给出文件路径。安装到项目：mkdir -p .claude/skills/jqson && jqson skill > .claude/skills/jqson/SKILL.md' },
   { name: 'cli:inspect', on: 'cli', sig: 'jqson inspect <file.json> [--depth n] [--limit n]', desc: '输出数据概况 JSON。' },
   { name: 'cli:explain', on: 'cli', sig: 'jqson explain "<selector>" [file.json]', desc: '解释选择器；给了文件时附带匹配数和前几个路径。' },
   { name: 'cli:query', on: 'cli', sig: 'jqson query <file.json> "<selector>" [--pluck path | --paths | --count]', desc: '查询，输出一行 JSON。' },
@@ -203,6 +204,7 @@ explain(selector)
   cli: {
     title: '命令行',
     body: `jqson help [topic|api] [--json]
+jqson skill [--json]           输出随包附带的 Agent skill
 jqson inspect <file.json> [--depth n] [--limit n]
 jqson explain "<selector>" [file.json]
 jqson query   <file.json> "<selector>" [--pluck path | --paths | --count]

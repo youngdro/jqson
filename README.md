@@ -32,6 +32,12 @@ help('attr');  help.json('parallel');  help.api();
 inspect(doc);  doc.describe();  explain('text:has(> image)');
 ```
 
+仓库和 npm 包都附带一份 Agent skill（`skills/jqson/SKILL.md`），与代码一起维护。装进 Claude Code 项目：
+
+```bash
+mkdir -p .claude/skills/jqson && jqson skill > .claude/skills/jqson/SKILL.md
+```
+
 CLI 出错时返回 `hint` 字段，告诉 Agent 下一步该查什么；`help` 拼错会给出相近建议。
 
 ## 1. 模型：JSON 怎么变成“DOM”
@@ -202,6 +208,7 @@ src/parallel.js   parallel()、createPool()
 src/script.js     runScript()、compileScript()
 src/worker.js     浏览器与 Node 共用的 worker 入口
 src/help.js       内置文档 help()、数据概况 inspect()、选择器解释 explain()
-bin/jqson.js    命令行
+bin/jqson.js      命令行
+skills/jqson/     随包附带的 Agent skill
 examples/         视频工程示例与校验器
 ```

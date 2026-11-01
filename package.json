@@ -16,7 +16,8 @@
     "bin",
     "examples",
     "README.md",
-    "AGENTS.md"
+    "AGENTS.md",
+    "skills"
   ],
   "sideEffects": false,
   "engines": {
