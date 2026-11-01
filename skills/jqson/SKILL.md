@@ -50,7 +50,7 @@ JS 中：`import { help } from 'jqson'; help('attr')`，或 `doc.help('merge')`�
 
 ## 5. 不要
 
-- 不要直接给 `doc.root` 下的对象赋值，否则索引和撤销会失效。改动一律走 Selection 方法或 `doc.set`。
+- 不要直接给 `doc.root` 下的对象赋值，否则索引和撤销会失效。改动一律走 Selection 方法（如 `doc.$(sel).set(...)`）或 `doc.applyPatch`。
 - 在 shell 里写 `-e` 代码时用单引号包住整段，避免 `$` 被 shell 展开。
 - 用 worker 跑脚本任务时，`element` 选项不能是函数。
 - 不要逐个元素多次调用 CLI；一段脚本完成全部修改更快，也是原子的。
