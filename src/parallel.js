@@ -13,7 +13,7 @@ const NODE_WORKER_MODULE = 'node:worker_threads';
 const WORKER_FILE = './worker.js';
 const MODULE_URL = import.meta.url;
 const WORKER_LOAD_HINT =
-  'worker error: worker 线程加载或运行失败。用 Vite 开发服务器时，需在 vite.config 中设置 optimizeDeps: { exclude: [\'jsonjq\'] }，见 README“在打包器中使用”';
+  'worker error: worker 线程加载或运行失败。用 Vite 开发服务器时，需在 vite.config 中设置 optimizeDeps: { exclude: [\'jqson\'] }，见 README“在打包器中使用”';
 const isNode = typeof process !== 'undefined' && !!process.versions?.node && typeof window === 'undefined';
 
 export function defaultThreads() {

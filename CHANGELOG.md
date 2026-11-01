@@ -4,18 +4,15 @@
 
 ## 1.0.0 - 2026-11-01
 
-首个正式版本，也是首次发布到 npm。
+首个正式版本，也是首次发布到 npm。从这一版起 API 视为稳定：不兼容改动只在主版本号升级时出现。
 
-- **改名**：包名和命令行都由 `jqson` 改为 `jsonjq`（npm 认为 jqson 与 json 等包名过于相似，不允许发布）。导入改为 `import jsonjq from 'jsonjq'`，命令改为 `jsonjq`，skill 目录改为 `skills/jsonjq/`
-从这一版起 API 视为稳定：不兼容改动只在主版本号升级时出现。
-
-- 新增声明式指令 `exec`（`doc.exec(commands)` / `jsonjq exec`）：纯 JSON、方法白名单、整批原子、`expect` 断言匹配数、值运算 `$add` `$mul` 等、`--dry-run` 预览；`execSchema` / `jsonjq schema` 给工具调用用
+- 新增声明式指令 `exec`（`doc.exec(commands)` / `jqson exec`）：纯 JSON、方法白名单、整批原子、`expect` 断言匹配数、值运算 `$add` `$mul` 等、`--dry-run` 预览；`execSchema` / `jqson schema` 给工具调用用
 - README、skill、AGENTS.md 把给 Agent 的推荐方式改为 exec → JSON Patch → 脚本，并附案例
 - 新增 TypeScript 类型声明 `types/index.d.ts`
 - 新增 GitHub Actions：Node 18 / 20 / 22 单元测试、Chromium 冒烟测试（含 Web Worker 并行）、类型检查
 - 新增英文 README（`README.en.md`）
-- 文档写明 `runScript` / `jsonjq run` 执行任意 JS、没有沙箱
-- 修复：经 Vite / webpack 打包后 worker 无法加载（Vite 不会打出 worker 文件，webpack 因 `node:worker_threads` 报错）。现在 Vite build、Vite dev（需 `optimizeDeps.exclude: ['jsonjq']`）和 webpack 5 都能直接使用，新增 `npm run test:bundlers` 在 Chromium 中实测
+- 文档写明 `runScript` / `jqson run` 执行任意 JS、没有沙箱
+- 修复：经 Vite / webpack 打包后 worker 无法加载（Vite 不会打出 worker 文件，webpack 因 `node:worker_threads` 报错）。现在 Vite build、Vite dev（需 `optimizeDeps.exclude: ['jqson']`）和 webpack 5 都能直接使用，新增 `npm run test:bundlers` 在 Chromium 中实测
 - worker 加载失败时的报错改为给出排查提示
 - 性能：全文属性扫描改用缓存的文档顺序表，约快 2 倍；大结果集按文档顺序排序改为 O(N) 过滤或数字排序；属性匹配不再每次创建闭包。10 万元素时 `text[style.fontSize>55]` 由约 25 ms 降到约 13 ms，合并 500 处改动由约 470 ms 降到约 316 ms
 
@@ -44,14 +41,14 @@
 - 遍历：`parentsUntil` `nextAll` `nextUntil` `prevAll` `prevUntil` `even` `odd` `addBack` `end` `index`
 - 字段：`css` `text`，`removeClass()` 无参数清空
 - 结构：`prependTo` `insertBefore` `insertAfter` `replaceAll` `detach` `clone` `wrap` `wrapAll` `wrapInner` `unwrap`；`doc.$({...})` 新建游离元素
-- 插件扩展点 `jsonjq.fn`
+- 插件扩展点 `jqson.fn`
 - `docs/jquery-compat.md` jQuery 对照表；`help('modes')`、`help('jquery')`
 
 ## 0.2.0 - 2026-11-01
 
 - 包名改为 `jqson`（原名 jsondom），命令行改为 `jqson`
-- 内置自查：`help()` / `inspect()` / `explain()`，命令行 `jsonjq help | inspect | explain`
-- 随包附带 Agent skill（`skills/jsonjq/SKILL.md`，`jsonjq skill` 输出）与 `AGENTS.md`
+- 内置自查：`help()` / `inspect()` / `explain()`，命令行 `jqson help | inspect | explain`
+- 随包附带 Agent skill（`skills/jqson/SKILL.md`，`jqson skill` 输出）与 `AGENTS.md`
 
 ## 0.1.0 - 2026-10-31
 

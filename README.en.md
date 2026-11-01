@@ -1,17 +1,17 @@
-# jsonjq
+# jqson
 
 [中文](README.md) | English
 
 **jQuery for JSON**: read and write any JSON with CSS selectors and jQuery-style chained methods, with transactions, validation, undo, a change stream, and parallel edits based on fork/merge. Zero dependencies; the same code runs in the **browser** and in **Node**.
 
 ```bash
-npm i jsonjq          # or install globally for the CLI: npm i -g jsonjq && jsonjq help
+npm i jqson          # or install globally for the CLI: npm i -g jqson && jqson help
 ```
 
 ```js
-import jsonjq from 'jsonjq';
+import jqson from 'jqson';
 
-const doc = jsonjq(project);                       // deep-copies once and builds indexes
+const doc = jqson(project);                       // deep-copies once and builds indexes
 doc.$('segment#hook text').attr('style.color', '#ff3b30');
 doc.$('text[zone=price-band]').addClass('pulse');
 doc.$('#selling').append({ type: 'image', id: 'detail-3', src: 'c.png', start: 6, duration: 2 });
@@ -25,21 +25,21 @@ The built-in help, error messages and the Agent skill are written in Chinese. Th
 The package ships its full usage docs and data-exploration commands, so an Agent can learn it after installing. See [AGENTS.md](AGENTS.md).
 
 ```bash
-jsonjq help                      # overview and API list; jsonjq help <topic|API>, --json for structured output
-jsonjq inspect data.json         # tags, fields (types and sample values), ids, classes, outline, suggested selectors
-jsonjq explain "segment > text[start>=2]" data.json   # explanation + match count + paths; syntax errors show the position
+jqson help                      # overview and API list; jqson help <topic|API>, --json for structured output
+jqson inspect data.json         # tags, fields (types and sample values), ids, classes, outline, suggested selectors
+jqson explain "segment > text[start>=2]" data.json   # explanation + match count + paths; syntax errors show the position
 ```
 
 ```js
-import { help, inspect, explain } from 'jsonjq';
+import { help, inspect, explain } from 'jqson';
 help('attr');  help.json('parallel');  help.api();
 inspect(doc);  doc.describe();  explain('text:has(> image)');
 ```
 
-The repo and the npm package include an Agent skill (`skills/jsonjq/SKILL.md`) maintained with the code. To install it into a Claude Code project:
+The repo and the npm package include an Agent skill (`skills/jqson/SKILL.md`) maintained with the code. To install it into a Claude Code project:
 
 ```bash
-mkdir -p .claude/skills/jsonjq && jsonjq skill > .claude/skills/jsonjq/SKILL.md
+mkdir -p .claude/skills/jqson && jqson skill > .claude/skills/jqson/SKILL.md
 ```
 
 CLI errors include a `hint` field that tells the Agent what to check next; misspelled `help` names get suggestions.
@@ -94,25 +94,25 @@ s.remove(sel?) / s.empty() / s.replaceWith(v) / s.replaceAll(target)
 s.clone().attr('id', 'b').insertAfter('#a')   // copy, change, insert
 doc.$({ type: 'image', id: 'logo' }).appendTo('#hero')   // create an element
 s.wrapAll({ type: 'group', id: 'g1' }) / s.wrap / s.wrapInner / s.unwrap()
-s.set(path, value) / s.merge(obj, path?) / s.insert(content)   // jsonjq extensions
+s.set(path, value) / s.merge(obj, path?) / s.insert(content)   // jqson extensions
 ```
 
 - `append` puts content into `children` (created if missing); the second argument names another array field.
 - Appending an element that is already in the document **moves** it; with several targets the earlier ones get clones (as in jQuery).
-- Plugins: `jsonjq.fn.shift = function (dt) { return this.attr('start', (i, v) => v + dt) }`.
+- Plugins: `jqson.fn.shift = function (dt) { return this.attr('start', (i, v) => v + dt) }`.
 
 ## 3.1 Three modes
 
 ```js
-jsonjq(data)                          // mode: 'copy' (default): one deep copy, the input is untouched
-jsonjq(data, { mode: 'inplace' })     // edits the object you pass; only one copy of the data; afterwards change it only through jsonjq
-jsonjq(data, { mode: 'immutable' })   // copy + structurally shared immutable snapshots
+jqson(data)                          // mode: 'copy' (default): one deep copy, the input is untouched
+jqson(data, { mode: 'inplace' })     // edits the object you pass; only one copy of the data; afterwards change it only through jqson
+jqson(data, { mode: 'immutable' })   // copy + structurally shared immutable snapshots
 ```
 
 In `immutable` mode `doc.state` starts as the `data` you passed. After each commit only the objects on the changed paths get new references; everything else is shared with the previous snapshot. This suits frameworks that compare by reference, such as React and Vue:
 
 ```js
-const doc = jsonjq(project, { mode: 'immutable' });
+const doc = jqson(project, { mode: 'immutable' });
 doc.on((e) => setState(e.state));    // e.state is doc.state
 doc.$('#point-1').text('Sugar free'); // only #point-1, #selling and the root are new objects
 ```
@@ -121,19 +121,19 @@ doc.$('#point-1').text('Sugar free'); // only #point-1, #selling and the root ar
 
 ## 3.2 With Vue, MobX and other reactive data
 
-The recommended setup lets jsonjq own its data and pushes each commit to the reactive object field by field as a JSON Patch:
+The recommended setup lets jqson own its data and pushes each commit to the reactive object field by field as a JSON Patch:
 
 ```js
-const doc = jsonjq(toRaw(state));                // Vue; for MobX use toJS(store)
+const doc = jqson(toRaw(state));                // Vue; for MobX use toJS(store)
 doc.syncTo(state);                              // Vue
 doc.syncTo(store, { batch: runInAction });      // MobX: one reaction per commit, no strict-mode warnings
 ```
 
-Only fields that really changed trigger updates, observers never see a transaction's intermediate state, and jsonjq's reads do not go through the proxy.
+Only fields that really changed trigger updates, observers never see a transaction's intermediate state, and jqson's reads do not go through the proxy.
 
-You can also work directly on the reactive object with `inplace`: `jsonjq(state, { mode: 'inplace' })`, plus `batch: runInAction` for MobX. This mode writes no internal fields onto your objects (metadata lives in WeakMaps), so building the document triggers no updates. It also handles MobX and Valtio replacing an object with a proxied copy on assignment, and a transaction rolls back completely when an observer throws. The cost is that every read goes through the proxy, so it is slower than `syncTo`.
+You can also work directly on the reactive object with `inplace`: `jqson(state, { mode: 'inplace' })`, plus `batch: runInAction` for MobX. This mode writes no internal fields onto your objects (metadata lives in WeakMaps), so building the document triggers no updates. It also handles MobX and Valtio replacing an object with a proxied copy on assignment, and a transaction rolls back completely when an observer throws. The cost is that every read goes through the proxy, so it is slower than `syncTo`.
 
-Tested with @vue/reactivity 3.5 and MobX 6.13. See `jsonjq help reactive`.
+Tested with @vue/reactivity 3.5 and MobX 6.13. See `jqson help reactive`.
 
 ## 4. Transactions, validation, undo, listeners
 
@@ -172,7 +172,7 @@ Conflict rules:
 `parallel(doc, tasks, opts)` runs several tasks at once and merges them in turn afterwards:
 
 ```js
-import { parallel, createPool } from 'jsonjq';
+import { parallel, createPool } from 'jqson';
 
 const reports = await parallel(doc, [
   // function task: current thread, its own fork; good for waiting on models or the network (I/O concurrency)
@@ -221,15 +221,15 @@ Each command selects elements with `"$"`, asserts the count with `"expect"`, the
 - Not allowed: methods that need functions (`each`, `map`), unknown methods and unknown `$` operators. Each fails with the index of the offending command.
 
 ```bash
-jsonjq exec project.json cmds.json --dry-run          # preview the patch first
-jsonjq exec project.json cmds.json --lint rules.js --write
-echo '[{"$":"#hook","attr":["x",1]}]' | jsonjq exec project.json -
-jsonjq schema                                          # JSON Schema, ready to use as a tool's parameter definition
+jqson exec project.json cmds.json --dry-run          # preview the patch first
+jqson exec project.json cmds.json --lint rules.js --write
+echo '[{"$":"#hook","attr":["x",1]}]' | jqson exec project.json -
+jqson schema                                          # JSON Schema, ready to use as a tool's parameter definition
 ```
 
 ```js
 const { results, patch } = doc.exec(commands, { dryRun: true });
-import { execSchema } from 'jsonjq';   // tool definition to give the model
+import { execSchema } from 'jqson';   // tool definition to give the model
 ```
 
 **Example: reprice a product video and highlight the selling points**
@@ -254,11 +254,11 @@ import { execSchema } from 'jsonjq';   // tool definition to give the model
 
 ### 6.2 JSON Patch
 
-Standard RFC 6902. Get the paths with `jsonjq query <file> <sel> --paths`, then write the patch:
+Standard RFC 6902. Get the paths with `jqson query <file> <sel> --paths`, then write the patch:
 
 ```bash
-jsonjq query project.json "#point-1" --paths      # → ["/children/1/children/1"]
-jsonjq patch project.json changes.json --out next.json
+jqson query project.json "#point-1" --paths      # → ["/children/1/children/1"]
+jqson patch project.json changes.json --out next.json
 ```
 
 ```json
@@ -270,7 +270,7 @@ Every commit's changes are also available from `doc.on(e => e.patch)` or `--patc
 ### 6.3 Scripts (trusted environments only)
 
 ```js
-import { runScript } from 'jsonjq';
+import { runScript } from 'jqson';
 await runScript(doc, `
   for (const seg of $('segment')) {
     const texts = $(seg).find('text');
@@ -282,20 +282,20 @@ await runScript(doc, `
 
 Scripts can use `$`, `doc` and `args`, and can `await`. Use them for loops, conditions and complex computation.
 
-> **Security note**: `runScript`, the script tasks of `parallel`, and `jsonjq run` execute arbitrary JavaScript with **no sandbox**. The code has the same permissions as the current process (or worker) and can read and write files and use the network. Only run code you trust, such as scripts your own Agent generates in a controlled environment; never run code taken directly from user input or third parties. When you need isolation, run it in a container, a restricted child process or a browser iframe.
+> **Security note**: `runScript`, the script tasks of `parallel`, and `jqson run` execute arbitrary JavaScript with **no sandbox**. The code has the same permissions as the current process (or worker) and can read and write files and use the network. Only run code you trust, such as scripts your own Agent generates in a controlled environment; never run code taken directly from user input or third parties. When you need isolation, run it in a container, a restricted child process or a browser iframe.
 
 ## 7. Command line
 
 ```bash
-jsonjq help [topic|API] [--json]
-jsonjq inspect examples/video-project.json
-jsonjq explain "segment > text" examples/video-project.json
-jsonjq query examples/video-project.json "text[zone=caption-band]" --pluck text
-jsonjq exec  project.json cmds.json [--ops json] [--dry-run] [--lint rules.js] [--write | --out file] [--patch file]
-jsonjq schema
-jsonjq run   project.json edit.js -e "$('video').attr('muted', true)" --lint examples/video-lint.js --write
-jsonjq run   project.json a.js b.js --parallel --threads 4 --patch out.patch.json
-jsonjq patch project.json out.patch.json --out next.json
+jqson help [topic|API] [--json]
+jqson inspect examples/video-project.json
+jqson explain "segment > text" examples/video-project.json
+jqson query examples/video-project.json "text[zone=caption-band]" --pluck text
+jqson exec  project.json cmds.json [--ops json] [--dry-run] [--lint rules.js] [--write | --out file] [--patch file]
+jqson schema
+jqson run   project.json edit.js -e "$('video').attr('muted', true)" --lint examples/video-lint.js --write
+jqson run   project.json a.js b.js --parallel --threads 4 --patch out.patch.json
+jqson patch project.json out.patch.json --out next.json
 ```
 
 Output is always one line of JSON (`ok`, `count`/`values`, `changes`, `conflicts`, `ms`). On failure the exit code is 1, with `errors` (validation), `conflicts`, or `command` (the index of the failing exec command), plus a `hint` saying what to check next.
@@ -304,16 +304,16 @@ Output is always one line of JSON (`ok`, `count`/`values`, `changes`, `conflicts
 
 ```html
 <script type="module">
-  import jsonjq, { parallel } from './jsonjq/src/index.js';
+  import jqson, { parallel } from './jqson/src/index.js';
 </script>
 ```
 
 The source is plain ESM. Node-only modules are imported dynamically in the Node branch only, so browsers never load them. Workers are created with `new Worker(new URL('./worker.js', import.meta.url), { type: 'module' })`, which bundlers emit as a separate file with its dependencies:
 
-- **Vite**: `vite build` needs no configuration. The dev server pre-bundles dependencies and then cannot find the worker file, so exclude jsonjq:
+- **Vite**: `vite build` needs no configuration. The dev server pre-bundles dependencies and then cannot find the worker file, so exclude jqson:
   ```js
   // vite.config.js
-  export default { optimizeDeps: { exclude: ['jsonjq'] } };
+  export default { optimizeDeps: { exclude: ['jqson'] } };
   ```
 - **webpack 5**: no configuration needed. If your entry uses top-level await, enable `experiments.topLevelAwait` (on by default since webpack 5.83).
 
@@ -352,9 +352,9 @@ src/worker.js     worker entry shared by browsers and Node
 src/help.js       built-in docs help(), data overview inspect(), selector explanation explain()
 src/exec.js       exec(): declarative commands and JSON Schema
 src/sync.js       syncTo(), applyPatchTo(): sync to Vue / MobX and other reactive data
-bin/jsonjq.js      command line
+bin/jqson.js      command line
 types/            TypeScript declarations
-skills/jsonjq/     the Agent skill shipped with the package
+skills/jqson/     the Agent skill shipped with the package
 examples/         example video project and validator
 docs/             jQuery comparison and other docs
 ```

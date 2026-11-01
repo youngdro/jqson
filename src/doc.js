@@ -35,7 +35,7 @@ const DEFAULTS = {
   element: 'auto', // 'auto' | 'all' | (obj, key) => boolean
   // mode：
   //   'copy'      默认。构造时深拷贝输入，原数据不受影响
-  //   'inplace'   直接接管并修改传入的对象（省一次拷贝；之后不要绕过 jsonjq 修改它）
+  //   'inplace'   直接接管并修改传入的对象（省一次拷贝；之后不要绕过 jqson 修改它）
   //   'immutable' 同 copy，另外 doc.state / snapshot() 提供结构共享的不可变快照，
   //               每次提交只有改动路径上的对象换新引用，适合 React 等按引用比较的框架
   history: 200, // 撤销栈深度，0 关闭
@@ -72,7 +72,7 @@ export class JsonDoc {
     this.version = 0;
 
     // 内部元数据：父指针、元素登记、快照对应对象。
-    // - copy / immutable：对象是 jsonjq 自己创建的，元数据直接挂在私有 Symbol 属性上，最快
+    // - copy / immutable：对象是 jqson 自己创建的，元数据直接挂在私有 Symbol 属性上，最快
     // - inplace：对象属于调用方（可能是 Vue / MobX 代理或冻结对象），元数据放在 WeakMap 里，
     //   不往对象上写任何东西，也不经过代理的拦截器
     if (mode === 'inplace') {
@@ -1287,7 +1287,7 @@ export class Selection {
     this._into(content, key, 'start');
     return this;
   }
-  /** 同 append，但返回新插入的元素（jsonjq 扩展） */
+  /** 同 append，但返回新插入的元素（jqson 扩展） */
   insert(content, key) {
     return this._wrap(this._into(content, key, 'end'));
   }

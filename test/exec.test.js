@@ -2,12 +2,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import jsonjq, { exec, execSchema, ExecError, ValidationError } from '../src/index.js';
+import jqson, { exec, execSchema, ExecError, ValidationError } from '../src/index.js';
 
 const sample = () => JSON.parse(fs.readFileSync(new URL('../examples/video-project.json', import.meta.url), 'utf8'));
 
 test('exec：简写、do 链、值运算、读取结果、新建元素', () => {
-  const doc = jsonjq(sample());
+  const doc = jqson(sample());
   const { results, patch } = doc.exec([
     { $: 'text[zone=caption-band]', expect: 4, css: { fontSize: { $mul: 1.1, $round: 0 } } },
     { $: '#point-1', do: [['text', { $prefix: '【', $suffix: '】' }], ['addClass', 'hl'], ['attr', 'start', { $add: 0.5 }]] },
@@ -35,7 +35,7 @@ test('exec：简写、do 链、值运算、读取结果、新建元素', () => {
 });
 
 test('exec：任何一条失败整批回滚；expect 不符、未知方法、非数字运算都报错并指出第几条', () => {
-  const doc = jsonjq(sample());
+  const doc = jqson(sample());
   const check = (cmds, re, index) => {
     assert.throws(() => doc.exec(cmds), (e) => e instanceof ExecError && re.test(e.message) && e.index === index);
     assert.deepEqual(doc.toJSON(), sample());
@@ -51,7 +51,7 @@ test('exec：任何一条失败整批回滚；expect 不符、未知方法、非
 });
 
 test('exec：dryRun 只预览，不修改', () => {
-  const doc = jsonjq(sample());
+  const doc = jqson(sample());
   const r = exec(doc, { $: '#hook', remove: true }, { dryRun: true });
   assert.equal(r.applied, false);
   assert.deepEqual(r.patch.map((p) => p.op), ['remove']);
@@ -61,12 +61,12 @@ test('exec：dryRun 只预览，不修改', () => {
 test('exec：方法白名单和 schema 一致；指令里不能出现函数', () => {
   const enumList = execSchema.items.properties.do.items.prefixItems[0].enum;
   assert.ok(enumList.includes('attr') && enumList.includes('pluck') && !enumList.includes('each'));
-  const doc = jsonjq(sample());
+  const doc = jqson(sample());
   assert.throws(() => doc.exec({ $: 'text', filter: [{}] }), /只接受选择器字符串/);
 });
 
 test('cli: exec / schema', () => {
-  const bin = new URL('../bin/jsonjq.js', import.meta.url).pathname;
+  const bin = new URL('../bin/jqson.js', import.meta.url).pathname;
   const file = new URL('../examples/video-project.json', import.meta.url).pathname;
   const r = JSON.parse(execFileSync('node', [bin, 'exec', file, '--ops', '[{"$":"#point-1","text":"零糖"},{"$":"text","pluck":"text"}]']));
   assert.equal(r.ok, true);

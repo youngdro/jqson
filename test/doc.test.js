@@ -1,12 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { jsonjq, ValidationError, ConflictError, parallel, runScript, SelectorError } from '../src/index.js';
+import { jqson, ValidationError, ConflictError, parallel, runScript, SelectorError } from '../src/index.js';
 
 const sample = () => JSON.parse(fs.readFileSync(new URL('../examples/video-project.json', import.meta.url), 'utf8'));
 
 test('选择器：类型、id、class、属性、组合符、伪类', () => {
-  const doc = jsonjq(sample());
+  const doc = jqson(sample());
   const ids = (s) => doc.$(s).pluck('id');
   assert.deepEqual(ids('segment'), ['hook', 'selling', 'offer']);
   assert.deepEqual(ids('#offer > *'), ['price-tag', 'cta-text']);
@@ -28,13 +28,13 @@ test('选择器：类型、id、class、属性、组合符、伪类', () => {
 });
 
 test('element: "all" 时普通 JSON 也能用属性名当标签', () => {
-  const doc = jsonjq({ users: [{ name: 'a', tags: ['x'] }, { name: 'b', tags: ['y'] }] }, { element: 'all' });
+  const doc = jqson({ users: [{ name: 'a', tags: ['x'] }, { name: 'b', tags: ['y'] }] }, { element: 'all' });
   assert.deepEqual(doc.$('users[tags=y]').pluck('name'), ['b']);
   assert.deepEqual(doc.$(':key(users)').length, 2);
 });
 
 test('修改：attr / class / append / before / remove / replaceWith，索引同步更新', () => {
-  const doc = jsonjq(sample());
+  const doc = jqson(sample());
   doc.$('#point-1').attr({ text: '零糖零脂', 'style.fontSize': 52 }).addClass('hl');
   assert.equal(doc.get('.hl').text, '零糖零脂');
   assert.equal(doc.get('#point-1').style.fontSize, 52);
@@ -59,7 +59,7 @@ test('修改：attr / class / append / before / remove / replaceWith，索引同
 });
 
 test('事务：出错整体回滚，校验器拦截非法修改', () => {
-  const doc = jsonjq(sample());
+  const doc = jqson(sample());
   const before = JSON.stringify(doc.root);
   assert.throws(() =>
     doc.transaction(() => {
@@ -79,8 +79,8 @@ test('事务：出错整体回滚，校验器拦截非法修改', () => {
 });
 
 test('撤销 / 重做 / JSON Patch 往返', () => {
-  const doc = jsonjq(sample());
-  const other = jsonjq(sample());
+  const doc = jqson(sample());
+  const other = jqson(sample());
   const patches = [];
   doc.on((e) => patches.push(...e.patch));
   doc.$('.caption').attr('style.color', '#111');
@@ -99,7 +99,7 @@ test('撤销 / 重做 / JSON Patch 往返', () => {
 });
 
 test('watch：只在相关子树变化时回调', () => {
-  const doc = jsonjq(sample());
+  const doc = jqson(sample());
   const hits = [];
   doc.watch('segment', (sel) => hits.push(sel.pluck('id')));
   doc.$('#point-2').attr('text', 'y');
@@ -108,7 +108,7 @@ test('watch：只在相关子树变化时回调', () => {
 });
 
 test('fork / merge：按 id 锚点重放，不受兄弟下标变化影响', () => {
-  const doc = jsonjq(sample());
+  const doc = jqson(sample());
   const a = doc.fork();
   a.$('#point-2').attr('text', 'A 改的');
   // 主文档在同一数组前面插入元素，point-2 的下标变了
@@ -119,7 +119,7 @@ test('fork / merge：按 id 锚点重放，不受兄弟下标变化影响', () =
 });
 
 test('fork / merge：同一字段冲突，追加与追加不冲突，删除子树与内部修改冲突', () => {
-  const doc = jsonjq(sample());
+  const doc = jqson(sample());
   const a = doc.fork();
   const b = doc.fork();
   a.$('#point-1').attr('text', 'A');
@@ -145,7 +145,7 @@ test('fork / merge：同一字段冲突，追加与追加不冲突，删除子�
 });
 
 test('parallel：异步任务各自 fork，并发后合并', async () => {
-  const doc = jsonjq(sample());
+  const doc = jqson(sample());
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const reports = await parallel(doc, [
     async (f) => {
@@ -166,7 +166,7 @@ test('parallel：异步任务各自 fork，并发后合并', async () => {
 });
 
 test('parallel：脚本任务在 worker 线程里运行', async () => {
-  const doc = jsonjq(sample());
+  const doc = jqson(sample());
   const reports = await parallel(
     doc,
     [
@@ -182,7 +182,7 @@ test('parallel：脚本任务在 worker 线程里运行', async () => {
 });
 
 test('runScript：脚本整体原子提交', async () => {
-  const doc = jsonjq(sample());
+  const doc = jqson(sample());
   await assert.rejects(runScript(doc, `$('text').attr('text', 'x'); throw new Error('no')`));
   assert.equal(doc.get('#point-1').text, '0 糖 0 脂');
   const r = await runScript(doc, `$('text').attr('text', (i, t) => t + '!'); return $('text').length`);
