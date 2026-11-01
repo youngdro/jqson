@@ -2,9 +2,9 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。1.0 之前，次版本号（0.x）的升级可能包含不兼容改动，会在下面标出。
 
-## 0.4.0 - 2026-11-01
+## 1.0.0 - 2026-11-01
 
-首个发布到 npm 的版本。
+首个正式版本，也是首次发布到 npm。从这一版起 API 视为稳定：不兼容改动只在主版本号升级时出现。
 
 - 新增声明式指令 `exec`（`doc.exec(commands)` / `jqson exec`）：纯 JSON、方法白名单、整批原子、`expect` 断言匹配数、值运算 `$add` `$mul` 等、`--dry-run` 预览；`execSchema` / `jqson schema` 给工具调用用
 - README、skill、AGENTS.md 把给 Agent 的推荐方式改为 exec → JSON Patch → 脚本，并附案例
