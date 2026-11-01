@@ -53,7 +53,7 @@ time('原生 JS 遍历做同样的筛选（对照）', () => {
 console.log('');
 
 const big = doc.$('.big');
-time(`批量改属性 ${big.length.toLocaleString()} 个（单事务）`, () => big.attr('style.color', (c) => (c === '#fff' ? '#000' : '#fff')), 3);
+time(`批量改属性 ${big.length.toLocaleString()} 个（单事务）`, () => big.attr('style.color', (i, c) => (c === '#fff' ? '#000' : '#fff')), 3);
 time('追加 1,000 个元素到一个段', () => doc.$('#s7').append(Array.from({ length: 1000 }, (_, i) => ({ type: 'text', id: `n${doc.version}-${i}` }))), 3);
 time('撤销上一次', () => doc.undo(), 1);
 
@@ -62,8 +62,8 @@ f.$('#s3 .caption').attr('motion.preset', 'typewriter');
 time('merge 一个改了 500 个元素的 fork', () => doc.merge(f, { policy: 'force' }), 1);
 
 const tasks = Array.from({ length: 8 }, (_, k) => ({
-  script: `const segs = $('segment').filter((n, i) => i % 8 === args.k);
-for (const s of segs) $(s).find('text[style.fontSize>50]').attr('style.fontSize', v => v - 4);
+  script: `const segs = $('segment').filter((i) => i % 8 === args.k);
+for (const s of segs) $(s).find('text[style.fontSize>50]').attr('style.fontSize', (i, v) => v - 4);
 return segs.length;`,
   args: { k },
 }));

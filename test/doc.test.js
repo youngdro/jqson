@@ -72,7 +72,7 @@ test('事务：出错整体回滚，校验器拦截非法修改', () => {
   assert.equal(doc.$('#selling').length, 1);
 
   doc.use(({ doc }) =>
-    doc.$('text').map((n) => n).filter((n) => n.text.length > 10).map((n) => ({ message: `${n.id} 文案过长` })),
+    doc.$('text').filter((i, n) => n.text.length > 10).map((i, n) => ({ message: `${n.id} 文案过长` })),
   );
   assert.throws(() => doc.$('#point-1').attr('text', '这是一段明显超过十个字的长文案'), ValidationError);
   assert.equal(doc.get('#point-1').text, '0 糖 0 脂');
@@ -170,8 +170,8 @@ test('parallel：脚本任务在 worker 线程里运行', async () => {
   const reports = await parallel(
     doc,
     [
-      { script: `$('#hook text').attr('style.fontSize', s => s + args.d); return $('text').length`, args: { d: 8 } },
-      { script: `$('#selling text').attr('style.fontSize', s => s + args.d)`, args: { d: 4 } },
+      { script: `$('#hook text').attr('style.fontSize', (i, s) => s + args.d); return $('text').length`, args: { d: 8 } },
+      { script: `$('#selling text').attr('style.fontSize', (i, s) => s + args.d)`, args: { d: 4 } },
       { script: `$('#offer').append({ type: 'text', id: 'w' })` },
     ],
     { threads: 2 },
@@ -185,7 +185,7 @@ test('runScript：脚本整体原子提交', async () => {
   const doc = jqson(sample());
   await assert.rejects(runScript(doc, `$('text').attr('text', 'x'); throw new Error('no')`));
   assert.equal(doc.get('#point-1').text, '0 糖 0 脂');
-  const r = await runScript(doc, `$('text').attr('text', t => t + '!'); return $('text').length`);
+  const r = await runScript(doc, `$('text').attr('text', (i, t) => t + '!'); return $('text').length`);
   assert.equal(r.result, 4);
   assert.equal(doc.get('#point-1').text, '0 糖 0 脂!');
   assert.equal(doc.version, 1);

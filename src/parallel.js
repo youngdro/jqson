@@ -71,7 +71,7 @@ export async function parallel(doc, tasks, { policy = 'throw', order = 'task', t
 
 function serializableOptions(o) {
   if (typeof o.element === 'function') throw new Error('script tasks need options.element to be "auto" or "all"');
-  return { ...o, clone: false };
+  return { ...o, mode: 'inplace', clone: false };
 }
 
 /** 创建 worker 池。worker 会缓存最近一次收到的文档快照，同一版本只传一次。 */

@@ -15,7 +15,8 @@ import { JsonDoc } from './doc.js';
 
 const API = [
   // 包导出
-  { name: 'jqson', on: 'module', sig: 'jqson(data, options?) → JsonDoc', desc: '创建文档。默认深拷贝 data 并建索引，原数据不变。options: typeKey/idKey/classKey/childrenKey 字段名，element: "auto"|"all"|fn，clone，history。', ex: "const doc = jqson(json, { element: 'auto' })" },
+  { name: 'jqson', on: 'module', sig: 'jqson(data, options?) → JsonDoc', desc: '创建文档。默认深拷贝 data 并建索引，原数据不变。options: mode: "copy"（默认，深拷贝）| "inplace"（直接改传入对象）| "immutable"（深拷贝 + 结构共享快照 doc.state）；typeKey/idKey/classKey/childrenKey/styleKey/textKey 字段名；element: "auto"|"all"|fn；history；freeze。', ex: "const doc = jqson(json, { mode: 'immutable' })" },
+  { name: 'fn', on: 'module', sig: 'jqson.fn.name = function (...) { return this }', desc: '插件扩展点，同 jQuery.fn（即 Selection.prototype）。', ex: "jqson.fn.shift = function (dt) { return this.attr('start', (i, v) => v + dt) }" },
   { name: 'runScript', on: 'module', sig: 'runScript(doc, source, { args, policy }) → Promise<{ result, ops, version, conflicts }>', desc: '在 fork 上执行一段脚本，成功才整体合并。脚本内可用 $、doc、args，可 await。Agent 做多步修改的首选方式。', ex: "await runScript(doc, \"$('text').attr('text', args.t); return $('text').length\", { args: { t: 'Hi' } })" },
   { name: 'parallel', on: 'module', sig: 'parallel(doc, tasks, { policy, order, threads, pool }) → Promise<report[]>', desc: '并行执行任务后合并。函数任务 async (fork) => {} 在当前线程跑（适合等模型/网络）；{ script, args } 在 worker 线程跑（适合 CPU 密集）。report: { index, ok, applied, conflicts, error, result }。', ex: "await parallel(doc, [async (f) => f.$('#a').attr('x', 1), { script: \"$('image').attr('opacity', .9)\" }], { policy: 'skip' })" },
   { name: 'createPool', on: 'module', sig: 'createPool({ size }) → Promise<pool>', desc: '创建可复用的 worker 池，传给 parallel({ pool })。用完调用 pool.close()。浏览器用 Web Worker，Node 用 worker_threads。', ex: 'const pool = await createPool({ size: 4 })' },
@@ -43,34 +44,49 @@ const API = [
   { name: 'fork', on: 'doc', sig: 'doc.fork() → JsonDoc', desc: '创建独立副本，修改后用 doc.merge(fork) 合并回来。' },
   { name: 'merge', on: 'doc', sig: "doc.merge(fork | { ops, baseVersion }, { policy: 'throw'|'skip'|'force' }) → { applied, conflicts, version }", desc: '按“最近的唯一 id 祖先”锚点重放 fork 的修改，兄弟增删不会错位。冲突：同路径/前缀路径、修改已删除子树；同一数组双方追加不算冲突。' },
   { name: 'opsSince', on: 'doc', sig: 'doc.opsSince(version) → ops[]', desc: '某版本之后的内部操作（带锚点），用于自定义合并。' },
+  { name: 'snapshot', on: 'doc', sig: 'doc.snapshot() / doc.state → object', desc: '结构共享的不可变快照：每次提交只有改动路径上的对象换新引用，其余复用。mode: "immutable" 时初始快照就是输入对象，提交事件 e.state 也可取到。任何模式都能用。', ex: "const next = doc.state; prev.children[0] === next.children[0]" },
   { name: 'describe', on: 'doc', sig: 'doc.describe(options?) → object', desc: '等同 inspect(doc)。' },
 
-  // Selection：读取与遍历
+  // Selection：遍历（与 jQuery 同名同义）
   { name: 'length', on: '$', sig: 's.length', desc: '匹配数量。' },
-  { name: 'find', on: '$', sig: 's.find(selector)', desc: '在后代中查找；选择器可以 > + ~ 开头（相对当前元素）。', ex: "doc.$('#hook').find('> text')" },
+  { name: 'find', on: '$', sig: 's.find(selector | element | Selection)', desc: '在后代中查找；选择器可以 > + ~ 开头（相对当前元素）。', ex: "doc.$('#hook').find('> text')" },
   { name: 'children', on: '$', sig: 's.children(selector?)', desc: '直接子元素。' },
-  { name: 'parent', on: '$', sig: 's.parent(selector?) / s.parents(selector?) / s.closest(selector)', desc: '向上查找。closest 包含自身。' },
-  { name: 'siblings', on: '$', sig: 's.siblings(selector?) / s.next(selector?) / s.prev(selector?)', desc: '同级元素。' },
-  { name: 'filter', on: '$', sig: 's.filter(selector | fn(node, i)) / s.not(...) / s.is(...) / s.has(selector)', desc: '筛选与判断。' },
-  { name: 'eq', on: '$', sig: 's.eq(i) / s.first() / s.last() / s.slice(a, b) / s.add(target)', desc: '按结果集位置取子集，eq 支持负数。' },
-  { name: 'pluck', on: '$', sig: 's.pluck(path) → any[]', desc: '取每个元素某字段（点路径）的值。', ex: "doc.$('text').pluck('style.fontSize')" },
-  { name: 'json', on: '$', sig: 's.json() / s.toArray() / s.get(i) / s.paths()', desc: '取出深拷贝 / 原始节点数组 / 第 i 个节点 / JSON Pointer 路径。' },
-  { name: 'each', on: '$', sig: 's.each(fn(node, i)) / s.map(fn(node, i))', desc: '遍历。在 each 里修改请用 doc.$(node).attr(...)，不要直接赋值。' },
+  { name: 'parent', on: '$', sig: 's.parent(selector?) / s.parents(selector?) / s.parentsUntil(until, selector?) / s.closest(selector | element)', desc: '向上查找。parents 与 parentsUntil 由近到远排序；closest 包含自身。' },
+  { name: 'siblings', on: '$', sig: 's.siblings(selector?)', desc: '同级元素。' },
+  { name: 'next', on: '$', sig: 's.next(sel?) / s.nextAll(sel?) / s.nextUntil(until, sel?) / s.prev(sel?) / s.prevAll(sel?) / s.prevUntil(until, sel?)', desc: '前后兄弟。prevAll / prevUntil 由近到远排序。', ex: "doc.$('#detail-1').nextUntil('image')" },
+  { name: 'filter', on: '$', sig: 's.filter(selector | function (i, el) | element | Selection) / s.not(...) / s.is(...) / s.has(selector | element)', desc: '筛选与判断；函数参数为 (index, element)，this 指向元素。', ex: "doc.$('text').filter((i, el) => el.text.length > 14)" },
+  { name: 'eq', on: '$', sig: 's.eq(i) / s.first() / s.last() / s.even() / s.odd() / s.slice(a, b)', desc: '按结果集位置取子集，eq 支持负数。' },
+  { name: 'add', on: '$', sig: 's.add(target, scope?) / s.addBack(selector?) / s.end()', desc: '合并结果；addBack 把上一步的结果并进来；end 回到上一步的结果。', ex: "doc.$('#selling').children('text').addBack()" },
+  { name: 'index', on: '$', sig: 's.index() / s.index(selector) / s.index(element | Selection)', desc: '无参数：第一个元素在兄弟中的位置；selector：它在 selector 结果中的位置；element：该元素在本集合中的位置。' },
+
+  // Selection：读取
+  { name: 'get', on: '$', sig: 's.get(i?) / s.toArray()', desc: 'get() 返回原始节点数组；get(i) 返回第 i 个（支持负数）。只读使用。' },
+  { name: 'each', on: '$', sig: 's.each(function (i, el) {})', desc: '遍历，this 指向元素；返回 false 提前结束。在里面修改请用 doc.$(el).attr(...)，不要直接赋值。' },
+  { name: 'map', on: '$', sig: 's.map(function (i, el) {}) → array', desc: '返回数组（数组结果展开一层，null/undefined 丢弃），兼容 .get()。jQuery 返回的是 jQuery 对象，这里直接给数组。', ex: "doc.$('text').map((i, el) => el.id)" },
+  { name: 'pluck', on: '$', sig: 's.pluck(path) → any[]', desc: 'jqson 扩展：取每个元素某字段（点路径）的值。', ex: "doc.$('text').pluck('style.fontSize')" },
+  { name: 'json', on: '$', sig: 's.json() / s.paths()', desc: 'jqson 扩展：深拷贝 / JSON Pointer 路径。' },
   { name: 'hasClass', on: '$', sig: 's.hasClass(name) → boolean', desc: '是否有元素带该 class。' },
 
-  // Selection：修改
-  { name: 'attr', on: '$', sig: 's.attr(path) → value；s.attr(path, value | fn(old, node, i))；s.attr({ path: value })', desc: '读写字段，path 支持点路径；值为函数时按元素计算。一次调用是一个事务。', ex: "doc.$('text').attr('start', (v) => v + 0.5)" },
-  { name: 'set', on: '$', sig: 's.set(path, value)', desc: '同 attr 写入，但值为函数时原样存入。' },
-  { name: 'merge', on: '$', sig: 's.merge(obj, path?)', desc: '把 obj 浅合并到每个元素（或其某个子对象）。', ex: "doc.$('text').merge({ color: '#fff' }, 'style')" },
-  { name: 'removeAttr', on: '$', sig: 's.removeAttr(path)', desc: '删除字段。' },
-  { name: 'addClass', on: '$', sig: 's.addClass(names) / s.removeClass(names) / s.toggleClass(names, force?)', desc: 'class 操作，names 空格分隔。' },
-  { name: 'append', on: '$', sig: 's.append(value | value[], key?) / s.prepend(...)', desc: '向每个元素加子元素。默认放进 children（或已有的子元素数组），key 指定字段名。返回原 Selection。', ex: "doc.$('#selling').append({ type: 'image', id: 'd3', src: 'c.png' })" },
-  { name: 'insert', on: '$', sig: 's.insert(value, key?) → Selection', desc: '同 append，但返回新插入的元素，便于继续链式修改。' },
-  { name: 'before', on: '$', sig: 's.before(value) / s.after(value)', desc: '在元素前/后插入兄弟（元素需位于数组中）。' },
-  { name: 'remove', on: '$', sig: 's.remove()', desc: '删除元素（连同子树）。' },
-  { name: 'replaceWith', on: '$', sig: 's.replaceWith(value)', desc: '替换元素。' },
+  // Selection：字段
+  { name: 'attr', on: '$', sig: 's.attr(path) → value；s.attr(path, value | function (i, old, el))；s.attr({ path: value })', desc: '读写字段，path 支持点路径。值为 null 删除字段（同 jQuery）；函数返回 undefined 不改。一次调用是一个事务。', ex: "doc.$('text').attr('start', (i, v) => v + 0.5)" },
+  { name: 'set', on: '$', sig: 's.set(path, value)', desc: 'jqson 扩展：原样写入，null 也照写，函数不求值。' },
+  { name: 'merge', on: '$', sig: 's.merge(obj, path?)', desc: 'jqson 扩展：把 obj 浅合并到每个元素（或其某个子对象）。', ex: "doc.$('text').merge({ color: '#fff' }, 'style')" },
+  { name: 'removeAttr', on: '$', sig: 's.removeAttr("a b.c")', desc: '删除字段，空格分隔可删多个。' },
+  { name: 'css', on: '$', sig: 's.css(name) / s.css([names]) / s.css(name, value | function (i, old)) / s.css({ ... })', desc: '读写 options.styleKey（默认 style）下的字段；名字可写 font-size 或 fontSize；值为 "" 时删除。', ex: "doc.$('text').css({ fontSize: 48, color: '#fff' })" },
+  { name: 'text', on: '$', sig: 's.text() / s.text(value | function (i, old))', desc: '读：所有匹配元素及其后代的 options.textKey（默认 text）拼接；写：设置每个元素的文字字段（不会像 jQuery 那样清空子元素）。' },
+  { name: 'addClass', on: '$', sig: 's.addClass(names | function (i, cur)) / s.removeClass(names?) / s.toggleClass(names, state?)', desc: 'class 操作，names 空格分隔；removeClass() 不带参数移除全部。' },
+
+  // Selection：结构
+  { name: 'append', on: '$', sig: 's.append(content, key?) / s.prepend(content, key?)', desc: '向每个元素的 key 数组（默认 children，不存在则创建）加内容。content：JSON、数组、元素、Selection 或 function (i, el)。文档里已有的元素会被移动，多个目标时前面的得到复制品。key 参数是 jqson 扩展。', ex: "doc.$('#selling').append({ type: 'image', id: 'd3', src: 'c.png' })" },
+  { name: 'appendTo', on: '$', sig: 's.appendTo(target, key?) / s.prependTo(target, key?)', desc: '把当前元素插入目标，返回插入后的元素。' },
+  { name: 'before', on: '$', sig: 's.before(content) / s.after(content)', desc: '在元素前/后插入兄弟（元素需位于数组中）。' },
+  { name: 'insertBefore', on: '$', sig: 's.insertBefore(target) / s.insertAfter(target)', desc: '把当前元素放到目标前/后，返回插入后的元素。', ex: "doc.$('#cta-text').insertAfter('#price-tag')" },
+  { name: 'insert', on: '$', sig: 's.insert(content, key?) → Selection', desc: 'jqson 扩展：同 append，但返回新插入的元素。' },
+  { name: 'remove', on: '$', sig: 's.remove(selector?) / s.detach(selector?)', desc: '删除元素（连同子树），可先按 selector 过滤。detach 与 remove 相同。' },
+  { name: 'replaceWith', on: '$', sig: 's.replaceWith(content | function (i, el)) / s.replaceAll(target)', desc: '替换元素。' },
   { name: 'empty', on: '$', sig: 's.empty()', desc: '删除所有子元素。' },
-  { name: 'appendTo', on: '$', sig: 's.appendTo(target, key?)', desc: '把元素移动到 target 下。' },
+  { name: 'clone', on: '$', sig: 's.clone() → 游离 Selection', desc: '深拷贝成游离元素，可继续 attr / addClass 等，再 appendTo / insertAfter 插回文档。doc.$({...}) 传入新 JSON 也得到游离元素。', ex: "doc.$('#hook-title').clone().attr('id', 'hook-2').appendTo('#offer')" },
+  { name: 'wrap', on: '$', sig: 's.wrap(wrapper) / s.wrapAll(wrapper) / s.wrapInner(wrapper) / s.unwrap(selector?)', desc: '包裹与解包。wrapper 是 JSON 对象、选择器、元素或 function (i, el)，元素放进 wrapper 的 children。wrapAll 把全部元素放进同一个 wrapper，适合编组。', ex: "doc.$('#point-1, #point-2').wrapAll({ type: 'group', id: 'g1' })" },
 
   // 命令行
   { name: 'cli:help', on: 'cli', sig: 'jqson help [topic|api] [--json]', desc: '查看内置文档。' },
@@ -129,26 +145,72 @@ const TOPICS = {
   query: {
     title: '查询与遍历',
     body: `doc.$(sel) 返回 Selection；doc.get(sel) 返回第一个原始节点；doc.byId(id)。
-遍历: find children parent parents closest siblings next prev filter not is has eq first last slice add
-读取: length pluck(path) json() toArray() get(i) paths() attr(path) hasClass(c) each map
+遍历: find children parent parents parentsUntil closest siblings next nextAll nextUntil prev prevAll prevUntil
+      filter not is has eq first last even odd slice add addBack end index
+读取: length get(i) toArray() each map attr(path) css(name) text() hasClass(c)
+扩展: pluck(path) json() paths()
 
+回调与 jQuery 一致：function (index, element)，this 指向元素。
   doc.$('#hook').find('> text').pluck('text')
-  doc.$('text').filter((n) => n.text.length > 10).paths()
-  doc.$('image').closest('segment').pluck('id')`,
+  doc.$('text').filter((i, el) => el.text.length > 10).paths()
+  doc.$('image').closest('segment').pluck('id')
+  doc.$('#detail-1').nextUntil('image').addBack().pluck('id')`,
   },
   mutation: {
     title: '修改',
     body: `每个修改方法本身是一个事务，自动维护索引、记录撤销、产生 JSON Patch。不要直接给 doc.root 下的对象赋值。
 
-  s.attr('style.fontSize', 48)                 写字段（点路径）
-  s.attr('start', (old, node, i) => old + 0.5)  按元素计算
-  s.attr({ zone: 'hero', duration: 2 })          一次写多个
-  s.merge({ color: '#fff' }, 'style')            合并到子对象
-  s.removeAttr('motion')
-  s.addClass('pulse big') / removeClass / toggleClass
-  s.append(child, key?) / prepend / before / after
-  s.insert(child) → 新元素的 Selection
-  s.remove() / replaceWith(v) / empty() / appendTo(target)`,
+字段
+  s.attr('style.fontSize', 48)                    写字段（点路径）
+  s.attr('start', (i, old) => old + 0.5)          按元素计算（this 为元素）
+  s.attr({ zone: 'hero', duration: 2 })           一次写多个
+  s.attr('motion', null) / s.removeAttr('a b')    删除字段
+  s.css('font-size', 48) / s.css({ color: '#fff' })   读写 style 子对象
+  s.text('新文案') / s.text((i, old) => old + '!')
+  s.set(path, value) / s.merge(obj, path?)        原样写入 / 浅合并（jqson 扩展）
+  s.addClass('pulse big') / removeClass() / toggleClass('a', true)
+结构
+  s.append(content, key?) / prepend / before / after          content 为 JSON、元素、Selection 或函数
+  s.appendTo(target) / prependTo / insertBefore / insertAfter  返回插入后的元素
+  s.insert(content) → 新元素                                   jqson 扩展
+  s.remove(sel?) / detach / empty() / replaceWith(v) / replaceAll(target)
+  s.clone().attr('id', 'b').appendTo('#seg')                   复制后改了再插回
+  doc.$({ type: 'image', id: 'logo' }).insertAfter('#hero')     新建元素
+  s.wrap({ type: 'group' }) / wrapAll / wrapInner / unwrap()    编组与解组
+文档里已有的元素被 append 到别处是移动；多个目标时前面的得到复制品（同 jQuery）。`,
+  },
+  modes: {
+    title: '三种模式：copy / inplace / immutable',
+    body: `jqson(data, { mode })
+  copy       默认。构造时深拷贝一次（2000 元素约 8ms），原数据不受影响。最安全，适合 Agent 和大多数场景。
+  inplace    直接接管并修改传入的对象，省一次拷贝和双份内存。要求之后只通过 jqson 修改它，
+             否则索引和撤销会失效。对象上会挂不可枚举的 Symbol 属性（JSON.stringify 看不到）。
+  immutable  同 copy，另外提供结构共享的不可变快照：
+               const s0 = doc.state;        // 初始就是传入的 data 本身
+               doc.$('#a').attr('x', 1);
+               const s1 = doc.state;        // 只有 #a 及其祖先是新对象，其余与 s0 共享
+               doc.on((e) => render(e.state));
+             适合 React / Vue 等按引用比较的框架，组件可以精确重渲染。freeze: true 时冻结新对象。
+doc.snapshot() / doc.state 在任何模式下都能用；toJSON() 始终返回完整深拷贝。`,
+  },
+  jquery: {
+    title: '与 jQuery 的对应关系',
+    body: `同名同义（回调 (i, el)，this 为元素；setter 返回自身可链式）：
+  遍历  find children parent parents parentsUntil closest siblings next nextAll nextUntil prev prevAll prevUntil
+        filter not is has eq first last even odd slice add addBack end index
+  读取  length get toArray each map
+  字段  attr removeAttr css text addClass removeClass toggleClass hasClass
+  结构  append prepend appendTo prependTo before after insertBefore insertAfter
+        remove detach empty replaceWith replaceAll clone wrap wrapAll wrapInner unwrap
+  扩展  jqson.fn.xxx = function () {}
+有差异：
+  map 直接返回数组（可 .get()）；attr(name, null) 删除字段；text(v) 只设文字字段不清空子元素；
+  append/prepend 的第二个参数是目标数组字段名；detach 等同 remove；css 读写 style 子对象。
+不提供（JSON 里没有对应概念）：
+  html val prop data、事件 on/off/trigger（用 doc.on / doc.watch）、动画 animate/show/hide、
+  尺寸位置 width/offset、ajax、Deferred（用 Promise）、$.each/$.extend（用原生 JS）。
+jqson 独有：pluck json paths set merge insert，事务、校验、撤销、fork/merge、parallel。
+完整对照表见仓库 docs/jquery-compat.md。`,
   },
   transaction: {
     title: '事务、校验、撤销、监听',
@@ -219,19 +281,23 @@ jqson patch   <file.json> <patch.json> [--write | --out file]
   recipes: {
     title: '常用写法',
     body: `// 所有价格区文字放大 10%
-$('text[zone=price-band]').attr('style.fontSize', (v) => Math.round(v * 1.1));
-// 某段之后的元素整体后移 1 秒
-$('#offer').siblings().filter((n) => n.start >= 6).attr('start', (v) => v + 1);
+$('text[zone=price-band]').css('fontSize', (i, v) => Math.round(v * 1.1));
+// 6 秒之后开始的元素整体后移 1 秒
+$('[start>=6]').attr('start', (i, v) => v + 1);
 // 给每段第一个文字加入场动画
 $('segment > text:first-child').attr('motion', { preset: 'fade-up', duration: 0.4 });
 // 删除没有 src 的图片
 $('image:not([src])').remove();
-// 把元素移动到另一段
+// 把元素移动到另一段末尾 / 某元素之后
 $('#detail-2').appendTo('#offer');
+$('#cta-text').insertAfter('#price-tag');
 // 找出超长文案
-$('text').filter((n) => n.text.length > 14).pluck('id');
-// 复制一段（新 id）
-$('#selling').after({ ...$('#selling').json()[0], id: 'selling-2' });`,
+$('text').filter((i, el) => el.text.length > 14).pluck('id');
+// 复制一段并改 id
+$('#selling').clone().attr('id', 'selling-2').insertAfter('#selling');
+// 把两个元素编成一组 / 解组
+$('#point-1, #point-2').wrapAll({ type: 'group', id: 'g1' });
+$('#g1 > *').unwrap();`,
   },
 };
 TOPICS.overview.body = TOPICS.overview.body.replace('TOPICS', Object.keys(TOPICS).join(' / '));
@@ -397,7 +463,7 @@ function collectFields(obj, prefix, out, depth) {
 }
 
 export function inspect(target, { depth = 3, limit = 20 } = {}) {
-  const doc = target instanceof JsonDoc ? target : new JsonDoc(target, { clone: false, history: 0 });
+  const doc = target instanceof JsonDoc ? target : new JsonDoc(target, { history: 0 });
   const { typeKey, idKey, classKey } = doc.options;
   const tags = {};
   const ids = [];

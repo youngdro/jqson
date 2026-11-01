@@ -19,7 +19,7 @@ jqson help >/dev/null 2>&1 || npm i -g jqson     # 没装就装；项目内也�
 
 ```bash
 jqson help                 # 总览、上手三步、API 一览
-jqson help <主题>           # model selectors query mutation transaction parallel script inspect cli recipes
+jqson help <主题>           # model selectors query mutation modes jquery transaction parallel script inspect cli recipes
 jqson help <API名>          # 如 attr、merge、parallel；拼错会提示相近名字；加 --json 输出结构化
 ```
 
@@ -42,7 +42,11 @@ JS 中：`import { help } from 'jqson'; help('attr')`，或 `doc.help('merge')`�
 
 - 元素 = 带 `type` 或 `id` 的对象；标签 = `type`，没有时用所在属性名；中间的普通对象/数组会被穿透。
 - 选择器：`text` `#id` `.cls` `[zone=hero]` `[start>=2]` `[style.fontSize>40]` `a > b` `a b` `a + b` `a ~ b` `:has(> text)` `:not()` `:nth-child()` `:key(name)`。以 `#id` 开头最快。
-- 修改：`attr(path, value | fn)` `set` `merge` `removeAttr` `addClass/removeClass/toggleClass` `append/prepend/before/after/insert` `remove/replaceWith/empty/appendTo`。写法和 jQuery 一致，path 支持点路径。
+- **按 jQuery 的习惯写**：方法名、参数、回调都与 jQuery 一致。回调是 `(i, value)` 或 `(i, el)`，`this` 为元素：`attr('start', (i, v) => v + 1)`、`filter((i, el) => el.text.length > 14)`。
+- 修改：`attr` `css` `text` `removeAttr` `addClass/removeClass/toggleClass`；`append/prepend/before/after` `appendTo/prependTo/insertBefore/insertAfter` `remove/empty/replaceWith/replaceAll` `clone` `wrap/wrapAll/wrapInner/unwrap`。path 支持点路径，`attr(path, null)` 删除字段。
+- 文档里已有的元素 append 到别处是移动；新建元素用 `doc.$({ type: 'image', ... }).appendTo('#seg')`，复制用 `.clone().attr('id', 'x').insertAfter(...)`。
+- jQuery 里与 DOM 绑定的 `html` `val` `prop` `data`、事件、动画、尺寸都没有，用 `attr` / `doc.watch` 代替；对照表 `jqson help jquery`。
+- 模式：默认 `copy` 深拷贝；`mode: 'inplace'` 直接改传入对象；`mode: 'immutable'` 提供结构共享快照 `doc.state`（给 React 等框架用）。`jqson help modes`。
 - 多步修改放进 `doc.transaction(fn)` 或一段脚本；`doc.use(validator)` 加校验；`doc.undo()` 撤销。
 - 并行：`parallel(doc, tasks, { policy: 'skip' })`。等模型或网络的任务写成 `async (fork) => {}`，CPU 密集的写成 `{ script, args }` 交给 worker。让各任务改不同 id 的子树，避免冲突。
 - 合并按最近的唯一 id 祖先锚定，兄弟增删不会错位。冲突 = 同路径或前缀路径、修改了对方删除的子树；同一数组双方追加不算冲突。多次并行时传 `pool: await createPool({ size })` 复用线程。

@@ -23,6 +23,7 @@ npx jqson explain "<sel>" data.json   # 解释选择器，返回匹配数和路�
 
 ## 规则
 
+- 写法与 jQuery 一致：回调参数是 `(i, value)` / `(i, el)`，`this` 为元素。差异与不提供的部分见 `jqson help jquery`。
 - 修改只用 Selection 方法（attr / set / merge / addClass / append / insert / remove / …）或 `doc.transaction`，不要直接给 `doc.root` 下的对象赋值。
 - 所有 CLI 输出（除 help）都是一行 JSON；失败时 `ok:false`，带 `hint` 告诉你下一步查什么。
 - shell 中 `-e` 代码用单引号包裹，避免 `$` 被展开。

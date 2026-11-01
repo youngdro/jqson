@@ -19,4 +19,8 @@ export function jqson(data, options) {
   return new JsonDoc(data, options);
 }
 
+/** 插件扩展点，同 jQuery.fn：jqson.fn.myMethod = function () { return this } */
+jqson.fn = Selection.prototype;
+export const fn = Selection.prototype;
+
 export default jqson;

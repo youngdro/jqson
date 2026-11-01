@@ -1,6 +1,6 @@
 {
   "name": "jqson",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "jQuery for JSON：CSS 选择器查询、链式修改、事务回滚、变更流、fork/merge 并行。浏览器和 Node 通用，零依赖。",
   "type": "module",
   "main": "./src/index.js",
@@ -17,7 +17,8 @@
     "examples",
     "README.md",
     "AGENTS.md",
-    "skills"
+    "skills",
+    "docs"
   ],
   "sideEffects": false,
   "engines": {

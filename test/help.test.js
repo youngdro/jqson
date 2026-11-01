@@ -64,3 +64,13 @@ test('skill: every API and CLI command it mentions exists', () => {
   for (const m of ['attr', 'set', 'merge', 'removeAttr', 'addClass', 'append', 'insert', 'remove', 'appendTo', 'transaction', 'use', 'undo', 'parallel', 'runScript'])
     if (md.includes(m)) assert.ok(names.has(m), m);
 });
+
+test('help 里的 recipes 都能直接运行', async () => {
+  const { runScript } = await import('../src/index.js');
+  const doc = jqson(data);
+  const body = help.json('recipes').body;
+  await runScript(doc, body);
+  assert.equal(doc.$('#g1').length, 0); // 编组后又解组
+  assert.equal(doc.$('#selling-2').length, 1);
+  assert.equal(doc.get('#cta-text').start, 8.6);
+});

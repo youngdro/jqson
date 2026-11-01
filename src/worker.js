@@ -9,7 +9,7 @@ let cached = { key: null, doc: null };
 async function handle(msg) {
   try {
     if (msg.data !== undefined) {
-      cached = { key: msg.dataKey, doc: new JsonDoc(msg.data, { ...msg.options, clone: false, history: Infinity }) };
+      cached = { key: msg.dataKey, doc: new JsonDoc(msg.data, { ...msg.options, mode: 'inplace', history: Infinity }) };
     }
     if (cached.key !== msg.dataKey) throw new Error('worker document cache miss');
     const doc = cached.doc;

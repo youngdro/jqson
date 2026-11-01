@@ -64,28 +64,56 @@ CLI 出错时返回 `hint` 字段，告诉 Agent 下一步该查什么；`help` 
 
 选择器解析结果会缓存。`#id` 开头的复杂选择器会从 id 节点直接展开，不扫全树。
 
-## 3. Selection API
+## 3. Selection API（与 jQuery 对齐）
+
+方法名、参数和回调形式都与 jQuery 一致：回调是 `function (index, element)`，`this` 指向元素；读取方法返回第一个元素的值；写入方法返回 Selection 可链式调用。完整对照与取舍见 [docs/jquery-compat.md](docs/jquery-compat.md)。
 
 查询：`doc.$(selector | node | nodes, scope?)`、`doc.get(sel)`（首个节点）、`doc.byId(id)`、`doc.matches(node, sel)`。
 
-遍历：`find` `children` `parent` `parents` `closest` `siblings` `next` `prev` `filter` `not` `is` `has` `eq` `first` `last` `slice` `add`
+遍历：`find` `children` `parent` `parents` `parentsUntil` `closest` `siblings` `next` `nextAll` `nextUntil` `prev` `prevAll` `prevUntil` `filter` `not` `is` `has` `eq` `first` `last` `even` `odd` `slice` `add` `addBack` `end` `index`
 
-读取：`get(i)` `toArray()` `each(fn)` `map(fn)` `json()` `paths()`（JSON Pointer）`pluck(path)` `hasClass(c)` `attr(path)`
+读取：`length` `get(i)` `toArray()` `each(fn)` `map(fn)` `attr(path)` `css(name)` `text()` `hasClass(c)`，扩展 `pluck(path)` `json()` `paths()`
 
 修改（每次调用一个事务，自动更新索引）：
 
 ```js
-s.attr('style.fontSize', 48)              // 点路径
-s.attr('start', (old, node, i) => old + 0.5)
+s.attr('style.fontSize', 48)                  // 点路径
+s.attr('start', (i, old) => old + 0.5)        // 同 jQuery：(index, oldValue)，this 为元素
 s.attr({ zone: 'hero', duration: 2 })
-s.set(path, value) / s.merge(obj, path?) / s.removeAttr(path)
-s.addClass('a b') / s.removeClass('a') / s.toggleClass('a')
-s.append(value, key?) / s.prepend(value) / s.before(value) / s.after(value)
-s.insert(...)  // 返回新插入的元素 Selection
-s.remove() / s.replaceWith(value) / s.empty() / s.appendTo(target)
+s.attr('motion', null)                        // null 删除字段；写字面量 null 用 s.set
+s.css('font-size', 48) / s.css({ color: '#fff' })   // 读写 style 子对象
+s.text('新文案')
+s.addClass('a b') / s.removeClass() / s.toggleClass('a', true)
+s.append(content, key?) / s.prepend / s.before / s.after
+s.appendTo(target) / s.prependTo / s.insertBefore / s.insertAfter
+s.remove(sel?) / s.empty() / s.replaceWith(v) / s.replaceAll(target)
+s.clone().attr('id', 'b').insertAfter('#a')   // 复制、改、插回
+doc.$({ type: 'image', id: 'logo' }).appendTo('#hero')   // 新建元素
+s.wrapAll({ type: 'group', id: 'g1' }) / s.wrap / s.wrapInner / s.unwrap()
+s.set(path, value) / s.merge(obj, path?) / s.insert(content)   // jqson 扩展
 ```
 
-`append` 默认放进 `children`（或已有的子元素数组）；可用第二个参数指定字段名。
+- `append` 默认放进 `children`（不存在会创建），第二个参数可指定其他数组字段。
+- 把文档里已有的元素 append 到别处是**移动**；多个目标时前面的得到复制品（同 jQuery）。
+- 插件：`jqson.fn.shift = function (dt) { return this.attr('start', (i, v) => v + dt) }`。
+
+## 3.1 三种模式
+
+```js
+jqson(data)                          // mode: 'copy'（默认）：深拷贝一次，原数据不受影响
+jqson(data, { mode: 'inplace' })     // 直接修改传入的对象，省拷贝；之后只能通过 jqson 改它
+jqson(data, { mode: 'immutable' })   // copy + 结构共享的不可变快照
+```
+
+`immutable` 模式下 `doc.state` 初始就是传入的 `data`；每次提交后只有改动路径上的对象换新引用，其余与上一个快照共享，适合 React / Vue 等按引用比较的框架：
+
+```js
+const doc = jqson(project, { mode: 'immutable' });
+doc.on((e) => setState(e.state));    // e.state 即 doc.state
+doc.$('#point-1').text('零糖');       // 只有 #point-1、#selling、根 是新对象
+```
+
+`doc.snapshot()` / `doc.state` 在任何模式下都能用；`freeze: true` 时新对象会被冻结。
 
 ## 4. 事务、校验、撤销、监听
 
@@ -130,7 +158,7 @@ const reports = await parallel(doc, [
   // 函数任务：当前线程、各自 fork，适合等模型/网络（I/O 并发）
   async (fork) => fork.$('#hook-title').attr('text', await llm('改写标题')),
   // 脚本任务：在 worker 线程里执行，适合吃 CPU 的批量改写
-  { script: "$('text').attr('style.fontSize', v => Math.round(v * 1.1))" },
+  { script: "$('text').css('fontSize', (i, v) => Math.round(v * 1.1))" },
   { script: "$('image').attr('opacity', args.o)", args: { o: 0.9 } },
 ], { policy: 'skip', order: 'task' | 'finish', threads: 4 });
 // reports[i] = { index, ok, applied, conflicts, error, result }
@@ -197,7 +225,7 @@ jqson patch project.json out.patch.json --out next.json
 - 大文档上 fork 和 worker 并行的主要成本是**复制数据**（深拷贝或跨线程结构化克隆）。商品视频工程一般几百到几千个元素，这个规模上并行开销在百毫秒级。
 - 等模型返回这类 I/O 任务用函数任务就够了，不用 worker；只有 CPU 密集的批量改写才值得进 worker。
 
-运行：`npm test`（16 个用例），`npm run bench [段数] [每段元素数]`。
+运行：`npm test`（28 个用例），`npm run bench [段数] [每段元素数]`。
 
 ## 10. 文件
 
@@ -211,4 +239,5 @@ src/help.js       内置文档 help()、数据概况 inspect()、选择器解释
 bin/jqson.js      命令行
 skills/jqson/     随包附带的 Agent skill
 examples/         视频工程示例与校验器
+docs/             jQuery 对照表等文档
 ```

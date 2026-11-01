@@ -30,10 +30,18 @@ const DEFAULTS = {
   idKey: 'id',
   classKey: 'class',
   childrenKey: 'children',
+  styleKey: 'style', // css() 读写的字段
+  textKey: 'text', // text() 读写的字段
   element: 'auto', // 'auto' | 'all' | (obj, key) => boolean
-  clone: true, // 构造时深拷贝输入
+  // mode：
+  //   'copy'      默认。构造时深拷贝输入，原数据不受影响
+  //   'inplace'   直接接管并修改传入的对象（省一次拷贝；之后不要绕过 jqson 修改它）
+  //   'immutable' 同 copy，另外 doc.state / snapshot() 提供结构共享的不可变快照，
+  //               每次提交只有改动路径上的对象换新引用，适合 React 等按引用比较的框架
   history: 200, // 撤销栈深度，0 关闭
+  freeze: false, // snapshot() 产出的新对象是否 Object.freeze
 };
+const MODES = ['copy', 'inplace', 'immutable'];
 
 export class ValidationError extends Error {
   constructor(errors) {
@@ -56,15 +64,19 @@ let docSeq = 0;
 export class JsonDoc {
   constructor(data, options = {}) {
     if (!isObj(data) || Array.isArray(data)) throw new TypeError('JsonDoc root must be a JSON object');
-    this.options = { ...DEFAULTS, ...options };
+    const mode = options.mode ?? (options.clone === false ? 'inplace' : 'copy');
+    if (!MODES.includes(mode)) throw new TypeError(`mode must be one of ${MODES.join(' | ')}`);
+    this.options = { ...DEFAULTS, ...options, mode, clone: mode !== 'inplace' };
     this.key = `doc${++docSeq}-${Math.random().toString(36).slice(2, 8)}`;
     this.version = 0;
 
     // 父指针和元素登记直接挂在对象的私有 Symbol 属性上（比 WeakMap 快很多，且不会出现在 JSON 输出里）
     const UP = Symbol('up'); // 对象/数组 -> { owner, key }，数组成员 key 为 null
     const EL = Symbol('el'); // 元素 -> 已登记的 { tag, id, classes }
+    const PUB = Symbol('pub'); // 对象/数组 -> 它在不可变快照中的对应对象（失效时为 undefined）
     this._U = UP;
     this._E = EL;
+    this._P = PUB;
     this._up = {
       get: (x) => x[UP],
       set: (x, v) => (x[UP] = v),
@@ -98,17 +110,87 @@ export class JsonDoc {
     this._validators = [];
     this._base = null; // fork 来源
 
-    this.root = this._adopt(data, null, null, this.options.clone !== false, true);
+    this._seed = mode === 'immutable'; // 不可变模式：初始快照直接复用输入对象
+    this.root = this._adopt(data, null, null, this.options.clone, true);
+    this._seed = false;
+  }
+
+  // ---------- 不可变快照 ----------
+
+  /**
+   * 结构共享的不可变快照：未改动的子树复用上一次快照的对象，改动路径上的对象换新引用。
+   * immutable 模式下初始快照就是传入的原对象。任何模式都可以调用。
+   */
+  snapshot() {
+    const P = this._P;
+    const freeze = this.options.freeze;
+    const build = (v) => {
+      if (!isObj(v)) return v;
+      const hit = v[P];
+      if (hit !== undefined) return hit;
+      let out;
+      if (Array.isArray(v)) {
+        out = new Array(v.length);
+        for (let i = 0; i < v.length; i++) out[i] = build(v[i]);
+      } else {
+        out = {};
+        for (const k of Object.keys(v)) out[k] = build(v[k]);
+      }
+      if (freeze) Object.freeze(out);
+      v[P] = out;
+      return out;
+    };
+    return build(this.root);
+  }
+
+  /** 当前不可变快照，等同 snapshot() */
+  get state() {
+    return this.snapshot();
+  }
+
+  // 容器内容变化：沿父链让快照失效（遇到已失效的祖先即停止，祖先必然也已失效）
+  _dirty(x) {
+    const P = this._P;
+    const U = this._U;
+    while (x && x[P] !== undefined) {
+      x[P] = undefined;
+      x = x[U]?.owner;
+    }
   }
 
   // ---------- 查询 ----------
 
   /** 选择元素：选择器字符串、元素对象、元素数组或 Selection */
+  // 传入不在文档里的 JSON 对象（或其数组）时，得到可修改后再插入文档的游离元素，类似 jQuery 的 $('<div>')
   $(target, scope) {
-    if (target instanceof Selection) return new Selection(this, target.nodes);
-    if (Array.isArray(target)) return new Selection(this, target.filter((n) => this._isEl.has(n)));
-    if (isObj(target)) return new Selection(this, this._isEl.has(target) ? [target] : []);
+    if (target instanceof Selection) return target.doc === this ? new Selection(this, target.nodes) : this._fragment(target.nodes);
+    if (Array.isArray(target)) {
+      const els = target.filter((n) => this._isEl.has(n));
+      if (els.length || !target.length || target.some((n) => isObj(n) && this._up.has(n))) return new Selection(this, els);
+      return this._fragment(target);
+    }
+    if (isObj(target)) {
+      if (this._isEl.has(target)) return new Selection(this, [target]);
+      if (this._up.has(target) || target === this.root) return new Selection(this, []);
+      return this._fragment([target]);
+    }
     return new Selection(this, this._query(String(target), scope ? this.$(scope).nodes : null, false));
+  }
+
+  // 游离元素：放在一个临时文档里，修改照常可用；appendTo 等会把它们复制进宿主文档
+  _fragment(values) {
+    const host = this._host || this;
+    const ck = this.options.childrenKey;
+    const frag = new JsonDoc({ [ck]: values.filter(isObj) }, { ...this.options, mode: 'copy', history: 0 });
+    frag._host = host;
+    for (const n of frag.root[ck]) {
+      if (!frag._isEl.has(n)) {
+        frag._count++;
+        frag._index(n);
+      }
+    }
+    frag._struct++;
+    return new Selection(frag, frag.root[ck].slice());
   }
 
   /** 第一个匹配元素（原始对象，只读使用） */
@@ -225,6 +307,7 @@ export class JsonDoc {
     }
     const patch = tx.ops.map(publicOp);
     const event = { version, patch, ops: tx.ops, touched: [...tx.touched].filter((n) => this._up.has(n) || n === this.root), meta };
+    Object.defineProperty(event, 'state', { get: () => this.snapshot() }); // 结构共享快照，按需计算
     for (const fn of this._listeners) fn(event);
     if (this._watchers.length) this._notifyWatchers(event);
     return { result, patch, version };
@@ -285,7 +368,7 @@ export class JsonDoc {
 
   /** 复制出一份独立文档。修改 fork 不影响原文档，之后用 merge 合回。 */
   fork() {
-    const f = new JsonDoc(this.root, { ...this.options, clone: true });
+    const f = new JsonDoc(this.root, { ...this.options, mode: 'copy' });
     f._base = { doc: this, version: this.version };
     return f;
   }
@@ -378,6 +461,7 @@ export class JsonDoc {
     const arr = Array.isArray(v);
     const out = clone ? (arr ? new Array(v.length) : {}) : v;
     if (owner) out[this._U] = { owner, key };
+    if (this._seed) out[this._P] = v;
     if (arr) {
       for (let i = 0; i < v.length; i++) {
         const c = v[i];
@@ -716,6 +800,7 @@ export class JsonDoc {
     if (isObj(old)) this._unregister(old);
     const v = this._adopt(value, container, arr ? null : key, !raw);
     container[key] = v;
+    this._dirty(container);
     if (!arr && this._isEl.has(container) && this._indexKeys().has(key)) this._reindex(container);
     this._record(had ? 'replace' : 'add', container, key, v, had ? old : undefined,
       had ? { t: 'set', c: container, k: key, v: old } : { t: 'del', c: container, k: key });
@@ -727,6 +812,7 @@ export class JsonDoc {
     const old = container[key];
     if (isObj(old)) this._unregister(old);
     delete container[key];
+    this._dirty(container);
     if (this._isEl.has(container) && this._indexKeys().has(key)) this._reindex(container);
     this._record('remove', container, key, undefined, old, { t: 'set', c: container, k: key, v: old });
   }
@@ -736,6 +822,7 @@ export class JsonDoc {
     const v = this._adopt(value, arr, null, !raw);
     const append = index === arr.length;
     arr.splice(index, 0, v);
+    this._dirty(arr);
     this._struct++;
     this._record('add', arr, index, v, undefined, { t: 'rm', c: arr, k: index }, append ? { append: true } : {});
   }
@@ -746,8 +833,17 @@ export class JsonDoc {
     // 先记录（路径要在删除前计算），再删除
     this._record('remove', arr, index, undefined, old, { t: 'ins', c: arr, k: index, v: old });
     arr.splice(index, 1);
+    this._dirty(arr);
     if (isObj(old)) this._unregister(old);
     else this._struct++;
+  }
+
+  // 把元素从所在位置删除（数组成员或对象属性）
+  _detach(n) {
+    const m = this._up.get(n);
+    if (!m) return;
+    if (m.key === null) this._remove(m.owner, m.owner.indexOf(n));
+    else this._del(m.owner, m.key);
   }
 
   _indexKeys() {
@@ -845,12 +941,20 @@ export class JsonDoc {
   }
 }
 
-// ---------- Selection：类 jQuery 的链式操作 ----------
+// ---------- Selection：与 jQuery 对齐的链式操作 ----------
+//
+// 约定与 jQuery 一致：
+// - 回调参数是 (index, value/element)，this 指向当前元素
+// - 读取方法返回第一个元素的值，写入方法对每个元素生效并返回 Selection 以便链式调用
+// - 把已在文档里的元素 append/before/... 到别处是“移动”，多个目标时除最后一个外都复制
+// - parents / prevAll / prevUntil / parentsUntil 按离当前元素由近到远排序
+// 与 jQuery 不同之处见 docs/jquery-compat.md。
 
 export class Selection {
-  constructor(doc, nodes) {
+  constructor(doc, nodes, prev = null) {
     this.doc = doc;
     this.nodes = nodes;
+    this.prevObject = prev;
   }
 
   get length() {
@@ -861,9 +965,13 @@ export class Selection {
     return this.nodes[Symbol.iterator]();
   }
 
-  // 遍历
+  // ---------- 遍历 ----------
   find(sel) {
     if (!this.nodes.length) return this._wrap([]);
+    if (typeof sel !== 'string') {
+      const set = this.doc.$(sel).nodes;
+      return this._wrap(set.filter((d) => this.nodes.some((a) => this.doc._isDescendant(d, a))));
+    }
     return this._wrap(this.doc._query(sel, this.nodes, true));
   }
   children(sel) {
@@ -873,15 +981,15 @@ export class Selection {
     return this._map((n) => [this.doc.parentOf(n)], sel);
   }
   parents(sel) {
-    return this._map((n) => {
-      const out = [];
-      for (let p = this.doc.parentOf(n); p; p = this.doc.parentOf(p)) out.push(p);
-      return out;
-    }, sel);
+    return this._map((n) => this._up(n, null), sel, true);
+  }
+  parentsUntil(until, sel) {
+    return this._map((n) => this._up(n, until), sel, true);
   }
   closest(sel) {
+    const p = this._pred(sel);
     return this._map((n) => {
-      for (let p = n; p; p = this.doc.parentOf(p)) if (this.doc.matches(p, sel)) return [p];
+      for (let x = n, i = 0; x; x = this.doc.parentOf(x), i++) if (p(x, i)) return [x];
       return [];
     });
   }
@@ -894,27 +1002,44 @@ export class Selection {
       return [s.list[s.i + 1]];
     }, sel);
   }
+  nextAll(sel) {
+    return this._map((n) => this._side(n, 1, null), sel);
+  }
+  nextUntil(until, sel) {
+    return this._map((n) => this._side(n, 1, until), sel);
+  }
   prev(sel) {
     return this._map((n) => {
       const s = this.doc._siblings(n);
       return [s.list[s.i - 1]];
     }, sel);
   }
+  prevAll(sel) {
+    return this._map((n) => this._side(n, -1, null), sel, true);
+  }
+  prevUntil(until, sel) {
+    return this._map((n) => this._side(n, -1, until), sel, true);
+  }
   filter(test) {
-    return this._wrap(this.nodes.filter(this._pred(test)));
+    const p = this._pred(test);
+    return this._wrap(this.nodes.filter((n, i) => p(n, i)));
   }
   not(test) {
     const p = this._pred(test);
     return this._wrap(this.nodes.filter((n, i) => !p(n, i)));
   }
   is(test) {
-    return this.nodes.some(this._pred(test));
+    const p = this._pred(test);
+    return this.nodes.some((n, i) => p(n, i));
   }
   has(sel) {
-    return this._wrap(this.nodes.filter((n) => this.doc._query(sel, [n], true).length > 0));
+    if (typeof sel === 'string') return this._wrap(this.nodes.filter((n) => this.doc._query(sel, [n], true).length > 0));
+    const set = this.doc.$(sel).nodes;
+    return this._wrap(this.nodes.filter((n) => set.some((d) => this.doc._isDescendant(d, n))));
   }
   eq(i) {
-    return this._wrap(this.nodes.at(i) ? [this.nodes.at(i)] : []);
+    const n = this.nodes.at(i);
+    return this._wrap(n ? [n] : []);
   }
   first() {
     return this.eq(0);
@@ -922,26 +1047,54 @@ export class Selection {
   last() {
     return this.eq(-1);
   }
+  even() {
+    return this._wrap(this.nodes.filter((_, i) => i % 2 === 0));
+  }
+  odd() {
+    return this._wrap(this.nodes.filter((_, i) => i % 2 === 1));
+  }
   slice(a, b) {
     return this._wrap(this.nodes.slice(a, b));
   }
-  add(target) {
-    return this._wrap(uniqueInOrder(this.doc, [...this.nodes, ...this.doc.$(target).nodes]));
+  add(target, scope) {
+    return this._wrap(uniqueInOrder(this.doc, [...this.nodes, ...this.doc.$(target, scope).nodes]));
+  }
+  addBack(sel) {
+    const prev = this.prevObject ? (sel ? this.prevObject.filter(sel) : this.prevObject).nodes : [];
+    return this._wrap(uniqueInOrder(this.doc, [...this.nodes, ...prev]));
+  }
+  end() {
+    return this.prevObject || this._wrap([]);
   }
 
-  // 读取
+  // ---------- 读取 ----------
   get(i) {
     return i === undefined ? this.nodes.slice() : this.nodes.at(i);
   }
-  each(fn) {
-    this.nodes.forEach((n, i) => fn(n, i, this.doc.$(n)));
-    return this;
-  }
-  map(fn) {
-    return this.nodes.map((n, i) => fn(n, i, this.doc.$(n)));
-  }
   toArray() {
     return this.nodes.slice();
+  }
+  /** each(function (i, el) {})；返回 false 提前结束 */
+  each(fn) {
+    for (let i = 0; i < this.nodes.length; i++) if (fn.call(this.nodes[i], i, this.nodes[i]) === false) break;
+    return this;
+  }
+  /** map(function (i, el) {})：返回数组（数组结果展开一层，null/undefined 丢弃），可再调用 .get() */
+  map(fn) {
+    const out = [];
+    this.nodes.forEach((n, i) => {
+      const r = fn.call(n, i, n);
+      if (r === null || r === undefined) return;
+      if (Array.isArray(r)) out.push(...r);
+      else out.push(r);
+    });
+    return withGet(out);
+  }
+  /** index()：在兄弟中的位置；index(selector)：在 selector 结果中的位置；index(element)：element 在本集合中的位置 */
+  index(arg) {
+    if (arg === undefined) return this.nodes.length ? this.doc._siblings(this.nodes[0]).i : -1;
+    if (typeof arg === 'string') return this.doc.$(arg).nodes.indexOf(this.nodes[0]);
+    return this.nodes.indexOf(arg instanceof Selection ? arg.nodes[0] : arg);
   }
   json() {
     return this.nodes.map((n) => cloneJson(n));
@@ -950,18 +1103,19 @@ export class Selection {
     return this.nodes.map((n) => this.doc.pointer(n));
   }
   pluck(path) {
-    const p = String(path).split('.');
+    const p = splitPath(path);
     return this.nodes.map((n) => getPath(n, p));
   }
   hasClass(c) {
     return this.nodes.some((n) => this.doc.classesOf(n).includes(c));
   }
 
-  // 写入（每次调用是一个事务；在 doc.transaction 内则并入外层）
+  // ---------- 字段 ----------
   /**
-   * attr(path)                 读取第一个元素的值
-   * attr(path, value | fn)     对每个元素设置；fn(old, node, i) 返回新值，返回 undefined 则不改
-   * attr({ path: value, ... }) 一次设置多个
+   * attr(path)                            第一个元素的值
+   * attr(path, value)                     对每个元素设置；value 为 null 时删除该字段
+   * attr(path, function (i, old, el) {})  按元素计算，返回 undefined 不改
+   * attr({ path: value, ... })            一次设置多个
    */
   attr(path, value) {
     if (isObj(path) && !Array.isArray(path)) {
@@ -969,167 +1123,400 @@ export class Selection {
         for (const [k, v] of Object.entries(path)) this.attr(k, v);
       });
     }
-    const segs = String(path).split('.');
+    const segs = splitPath(path);
     if (arguments.length < 2) return this.nodes.length ? getPath(this.nodes[0], segs) : undefined;
     return this._write(() => {
       this.nodes.forEach((n, i) => {
-        const v = typeof value === 'function' ? value(getPath(n, segs), n, i) : value;
+        const v = typeof value === 'function' ? value.call(n, i, getPath(n, segs), n) : value;
         if (v === undefined) return;
-        setPath(this.doc, n, segs, v);
+        if (v === null) removePath(this.doc, n, segs);
+        else setPath(this.doc, n, segs, v);
       });
     });
   }
+  /** 原样写入（null 也照写，不做函数求值） */
   set(path, value) {
-    return this.attr(path, value);
+    const segs = splitPath(path);
+    return this._write(() => {
+      for (const n of this.nodes) setPath(this.doc, n, segs, value);
+    });
   }
-  /** 浅合并到元素（或其子路径）上 */
+  /** 把对象浅合并到元素（或其某个子路径）上 */
   merge(obj, path) {
     return this._write(() => {
-      for (const [k, v] of Object.entries(obj)) this.attr(path ? `${path}.${k}` : k, v);
+      for (const [k, v] of Object.entries(obj)) this.set(path ? `${path}.${k}` : k, v);
     });
   }
-  removeAttr(path) {
-    const segs = String(path).split('.');
+  /** removeAttr('a b.c')：空格分隔可删多个 */
+  removeAttr(paths) {
+    const list = String(paths).split(/\s+/).filter(Boolean).map(splitPath);
     return this._write(() => {
-      for (const n of this.nodes) {
-        let c = n;
-        for (let i = 0; i < segs.length - 1 && isObj(c); i++) c = c[segs[i]];
-        if (isObj(c)) this.doc._del(c, segs[segs.length - 1]);
-      }
+      for (const n of this.nodes) for (const segs of list) removePath(this.doc, n, segs);
     });
+  }
+  /** css(name) / css([names]) / css(name, value | fn(i, old)) / css({...})：读写 options.styleKey（默认 style）下的字段 */
+  css(name, value) {
+    const sk = this.doc.options.styleKey;
+    if (Array.isArray(name)) {
+      const n = this.nodes[0];
+      const out = {};
+      for (const k of name) out[k] = n?.[sk]?.[camel(k)];
+      return out;
+    }
+    if (isObj(name)) {
+      return this._write(() => {
+        for (const [k, v] of Object.entries(name)) this.css(k, v);
+      });
+    }
+    const path = `${sk}.${camel(name)}`;
+    if (arguments.length < 2) return this.attr(path);
+    return this.attr(path, value === '' ? null : value);
+  }
+  /** text()：所有匹配元素及其后代的 options.textKey 拼接；text(value | fn(i, old))：设置每个元素的文字字段 */
+  text(value) {
+    const key = this.doc.options.textKey;
+    if (arguments.length === 0) {
+      const out = [];
+      for (const n of this.nodes) {
+        this.doc._walk(n, (d) => {
+          const t = d[key];
+          if (t !== undefined && t !== null && !isObj(t)) out.push(String(t));
+        });
+      }
+      return out.join('');
+    }
+    return this.attr(key, typeof value === 'function' ? value : value === null ? '' : String(value));
   }
   addClass(names) {
     return this._classes(names, (cls, c) => (cls.includes(c) ? cls : [...cls, c]));
   }
+  /** removeClass() 不带参数时移除全部 class */
   removeClass(names) {
-    return this._classes(names, (cls, c) => cls.filter((x) => x !== c));
+    return this._classes(names, (cls, c) => cls.filter((x) => x !== c), names === undefined);
   }
-  toggleClass(names, force) {
+  toggleClass(names, state) {
     return this._classes(names, (cls, c) => {
-      const on = force ?? !cls.includes(c);
+      const on = typeof state === 'boolean' ? state : !cls.includes(c);
       return on ? (cls.includes(c) ? cls : [...cls, c]) : cls.filter((x) => x !== c);
     });
   }
 
-  /** 把 JSON 追加到每个元素的 key 数组（默认 options.childrenKey）。value 可为函数 (node, i) => json */
-  append(value, key) {
-    this._insertInto(value, key, false);
+  // ---------- 结构 ----------
+  // 内容可以是：JSON 值、JSON 数组、元素、Selection（含 clone() 得到的游离元素），或 function (i, el) 返回以上之一。
+  // 文档里已有的元素会被移动；多个目标时，除最后一个外插入的是复制品。
+
+  /** 插入到每个元素的 key 数组末尾（默认 options.childrenKey，不存在则创建） */
+  append(content, key) {
+    this._into(content, key, 'end');
     return this;
   }
-  prepend(value, key) {
-    this._insertInto(value, key, true);
+  prepend(content, key) {
+    this._into(content, key, 'start');
     return this;
   }
-  /** 和 append 相同，但返回新插入的元素 */
-  insert(value, key) {
-    return this._wrap(this._insertInto(value, key, false));
+  /** 同 append，但返回新插入的元素（jqson 扩展） */
+  insert(content, key) {
+    return this._wrap(this._into(content, key, 'end'));
   }
-  before(value) {
-    return this._sibling(value, 0);
+  before(content) {
+    this._beside(content, 'before');
+    return this;
   }
-  after(value) {
-    return this._sibling(value, 1);
+  after(content) {
+    this._beside(content, 'after');
+    return this;
   }
-  remove() {
+  appendTo(target, key) {
+    return this._to(target, (d) => d._into(this, key, 'end'));
+  }
+  prependTo(target, key) {
+    return this._to(target, (d) => d._into(this, key, 'start'));
+  }
+  insertBefore(target) {
+    return this._to(target, (d) => d._beside(this, 'before'));
+  }
+  insertAfter(target) {
+    return this._to(target, (d) => d._beside(this, 'after'));
+  }
+  replaceWith(content) {
+    this._replace(content);
+    return this;
+  }
+  replaceAll(target) {
+    return this._to(target, (d) => d._replace(this));
+  }
+  /** remove(selector?)：删除（可先按 selector 过滤） */
+  remove(sel) {
+    const list = sel === undefined ? this.nodes : this.nodes.filter((n, i) => this._pred(sel)(n, i));
     return this._write(() => {
-      for (const n of this.nodes) {
+      for (const n of list) {
         if (n === this.doc.root) throw new Error('Cannot remove the document root');
-        const m = this.doc._up.get(n);
-        if (!m) continue;
-        if (m.key === null) this.doc._remove(m.owner, m.owner.indexOf(n));
-        else this.doc._del(m.owner, m.key);
+        this.doc._detach(n);
       }
     });
   }
-  replaceWith(value) {
-    return this._write(() => {
-      this.nodes.forEach((n, i) => {
-        const m = this.doc._up.get(n);
-        const v = typeof value === 'function' ? value(n, i) : value;
-        if (m.key === null) this.doc._set(m.owner, m.owner.indexOf(n), v);
-        else this.doc._set(m.owner, m.key, v);
-      });
-    });
+  /** 与 remove 相同（JSON 没有事件和数据需要保留） */
+  detach(sel) {
+    return this.remove(sel);
   }
   /** 删除所有子元素 */
   empty() {
     return this._write(() => {
-      for (const n of this.nodes) this.doc.$(this.doc.childrenOf(n)).remove();
+      for (const n of this.nodes) for (const k of this.doc.childrenOf(n).slice()) this.doc._detach(k);
     });
   }
-  /** 移动到目标元素的 key 数组末尾 */
-  appendTo(target, key) {
-    const dest = this.doc.$(target);
+  /** 深拷贝成游离元素，可继续修改后 appendTo / insertAfter 等插回文档 */
+  clone() {
+    return this.doc._fragment(this.nodes);
+  }
+  /** 用 wrapper（JSON 对象、选择器、元素或 function (i, el)）包裹每个元素，元素放进 wrapper 的 childrenKey */
+  wrap(wrapper) {
     return this._write(() => {
-      const data = this.json();
-      this.remove();
-      dest.first().append(data, key);
+      this.nodes.forEach((n, i) => this._wrapOne(n, this._wrapper(wrapper, i, n)));
+    });
+  }
+  /** 用一个 wrapper 包裹全部元素：放在第一个元素的位置，其余元素按文档顺序移入 */
+  wrapAll(wrapper) {
+    if (!this.nodes.length) return this;
+    return this._write(() => {
+      const ordered = uniqueInOrder(this.doc, this.nodes);
+      const wn = this._wrapOne(ordered[0], this._wrapper(wrapper, 0, ordered[0]));
+      this._place(wn[this.doc.options.childrenKey], ordered.slice(1).map((n) => ({ move: n })), 'end');
+    });
+  }
+  /** 用 wrapper 包裹每个元素的子元素数组 */
+  wrapInner(wrapper) {
+    const ck = this.doc.options.childrenKey;
+    return this._write(() => {
+      this.nodes.forEach((n, i) => {
+        const w = this._wrapper(wrapper, i, n);
+        const arr = n[ck];
+        if (!Array.isArray(arr)) return this.doc._set(n, ck, [w]);
+        const kids = arr.slice();
+        for (let j = arr.length - 1; j >= 0; j--) this.doc._remove(arr, j);
+        this.doc._insert(arr, 0, w);
+        const inner = arr[0][ck];
+        kids.forEach((k) => this.doc._insert(inner, inner.length, k, true));
+      });
+    });
+  }
+  /** 去掉父元素，把它的子元素放回父元素原来的位置（可用 selector 限定父元素） */
+  unwrap(sel) {
+    return this._write(() => {
+      const ps = this.nodes.map((n) => this.doc.parentOf(n)).filter((p) => p && p !== this.doc.root && (!sel || this.doc.matches(p, sel)));
+      for (const p of uniqueInOrder(this.doc, ps)) {
+        const m = this.doc._up.get(p);
+        if (!m) continue;
+        if (m.key !== null) throw new Error('unwrap() 需要父元素位于数组中');
+        const owner = m.owner;
+        const idx = owner.indexOf(p);
+        const kids = this.doc.childrenOf(p).slice();
+        this.doc._remove(owner, idx);
+        kids.forEach((k, j) => this.doc._insert(owner, idx + j, k, true));
+      }
     });
   }
 
   // ---------- 内部 ----------
   _wrap(nodes) {
-    return new Selection(this.doc, nodes);
+    return new Selection(this.doc, nodes, this);
   }
-  _map(fn, sel) {
+  _map(fn, sel, reverse = false) {
     const out = [];
     for (const n of this.nodes) for (const x of fn(n)) if (x) out.push(x);
     let nodes = uniqueInOrder(this.doc, out);
+    if (reverse) nodes.reverse();
     if (sel) nodes = nodes.filter((n) => this.doc.matches(n, sel));
     return this._wrap(nodes);
   }
+  _up(n, until) {
+    const stop = until === null || until === undefined ? null : this._pred(until);
+    const out = [];
+    for (let p = this.doc.parentOf(n); p; p = this.doc.parentOf(p)) {
+      if (stop && stop(p, 0)) break;
+      out.push(p);
+    }
+    return out;
+  }
+  _side(n, dir, until) {
+    const stop = until === null || until === undefined ? null : this._pred(until);
+    const s = this.doc._siblings(n);
+    const out = [];
+    for (let i = s.i + dir; i >= 0 && i < s.list.length; i += dir) {
+      if (stop && stop(s.list[i], 0)) break;
+      out.push(s.list[i]);
+    }
+    return out;
+  }
   _pred(test) {
-    if (typeof test === 'function') return (n, i) => test(n, i, this.doc.$(n));
-    return (n) => this.doc.matches(n, test);
+    if (typeof test === 'function') return (n, i) => !!test.call(n, i, n);
+    if (typeof test === 'string') return (n) => this.doc.matches(n, test);
+    const set = new Set(test instanceof Selection ? test.nodes : Array.isArray(test) ? test : [test]);
+    return (n) => set.has(n);
   }
   _write(fn) {
     this.doc._auto(fn);
     return this;
   }
-  _classes(names, fn) {
-    const list = String(names).split(/\s+/).filter(Boolean);
+  _classes(names, fn, all = false) {
     const key = this.doc.options.classKey;
     return this._write(() => {
-      for (const n of this.nodes) {
+      this.nodes.forEach((n, i) => {
         const before = this.doc.classesOf(n);
+        const v = typeof names === 'function' ? names.call(n, i, before.join(' '), n) : names;
+        const list = all ? before : String(v ?? '').split(/\s+/).filter(Boolean);
         let cls = before;
         for (const c of list) cls = fn(cls, c);
-        if (cls.join(' ') === before.join(' ')) continue;
+        if (cls.join(' ') === before.join(' ')) return;
         this.doc._set(n, key, Array.isArray(n[key]) ? cls : cls.join(' '));
-      }
+      });
     });
   }
-  _insertInto(value, key, atStart) {
+  // 把内容解析成待插入项：{ move: 文档内元素 } 或 { value: JSON }
+  _items(content, i, n) {
+    const v = typeof content === 'function' ? content.call(n, i, n) : content;
+    if (v === undefined) return [];
+    const raw = v instanceof Selection ? v.nodes : Array.isArray(v) ? v : [v];
+    const last = i === this.nodes.length - 1;
+    return raw.map((x) => {
+      if (isObj(x) && this.doc._isEl.has(x)) return last ? { move: x } : { value: cloneJson(x) };
+      return { value: x };
+    });
+  }
+  // 依次插入到数组 arr：where = end | start | before ref | after ref；返回插入的元素
+  _place(arr, items, where, ref) {
+    const doc = this.doc;
+    const out = [];
+    let anchor = where === 'after' ? ref : null;
+    for (const it of items) {
+      let v = it.value;
+      let raw = false;
+      if (it.move) {
+        const n = it.move;
+        if (n === ref) {
+          anchor = n;
+          continue;
+        }
+        for (let x = arr; x; x = doc._up.get(x)?.owner) if (x === n) throw new Error('Cannot move an element into itself');
+        doc._detach(n);
+        v = n;
+        raw = true;
+      }
+      const idx = where === 'end' ? arr.length : where === 'before' ? arr.indexOf(ref) : anchor ? arr.indexOf(anchor) + 1 : 0;
+      doc._insert(arr, idx, v, raw);
+      anchor = arr[idx];
+      if (doc._isEl.has(anchor)) out.push(anchor);
+    }
+    return out;
+  }
+  _into(content, key, where) {
     key = key ?? this.doc.options.childrenKey;
-    const inserted = [];
-    this._write(() => {
+    const out = [];
+    this.doc._auto(() => {
       this.nodes.forEach((n, i) => {
-        let v = typeof value === 'function' ? value(n, i) : value;
-        const items = Array.isArray(v) ? v : [v];
+        const items = this._items(content, i, n);
+        if (!items.length) return;
         if (n[key] === undefined) this.doc._set(n, key, []);
         const arr = n[key];
         if (!Array.isArray(arr)) throw new TypeError(`"${key}" is not an array`);
-        items.forEach((item, j) => {
-          const at = atStart ? j : arr.length;
-          this.doc._insert(arr, at, item);
-          if (this.doc._isEl.has(arr[at])) inserted.push(arr[at]);
-        });
+        out.push(...this._place(arr, items, where, null));
       });
     });
-    return inserted;
+    return out;
   }
-  _sibling(value, offset) {
-    return this._write(() => {
+  _beside(content, where) {
+    const out = [];
+    this.doc._auto(() => {
       this.nodes.forEach((n, i) => {
         const m = this.doc._up.get(n);
-        if (!m || m.key !== null) throw new Error('before()/after() need the element to sit in an array');
-        const v = typeof value === 'function' ? value(n, i) : value;
-        const items = Array.isArray(v) ? v : [v];
-        let at = m.owner.indexOf(n) + offset;
-        for (const item of items) this.doc._insert(m.owner, at++, item);
+        if (!m || m.key !== null) throw new Error('before()/after() 需要元素位于数组中');
+        out.push(...this._place(m.owner, this._items(content, i, n), where, n));
       });
     });
+    return out;
   }
+  _replace(content) {
+    const out = [];
+    this.doc._auto(() => {
+      this.nodes.forEach((n, i) => {
+        if (n === this.doc.root) throw new Error('Cannot replace the document root');
+        const m = this.doc._up.get(n);
+        if (!m) return;
+        const items = this._items(content, i, n);
+        if (items.some((it) => it.move === n)) return;
+        if (m.key === null) {
+          out.push(...this._place(m.owner, items, 'before', n));
+          this.doc._detach(n);
+          return;
+        }
+        if (items.length !== 1) throw new Error('replaceWith()：位于对象属性上的元素只能替换为一个值');
+        const it = items[0];
+        if (it.move) {
+          this.doc._detach(it.move);
+          this.doc._set(m.owner, m.key, it.move, true);
+        } else this.doc._set(m.owner, m.key, it.value);
+        const placed = m.owner[m.key];
+        if (this.doc._isEl.has(placed)) out.push(placed);
+      });
+    });
+    return out;
+  }
+  // appendTo 等：目标在宿主文档（clone() 得到的游离元素也插回原文档）
+  _to(target, fn) {
+    const host = this.doc._host || this.doc;
+    const dest = target instanceof Selection && target.doc === host ? target : host.$(target);
+    let out = [];
+    host._auto(() => {
+      out = fn(dest);
+    });
+    return new Selection(host, uniqueInOrder(host, out), this);
+  }
+  _wrapper(w, i, n) {
+    let v = typeof w === 'function' ? w.call(n, i, n) : w;
+    if (typeof v === 'string') v = (this.doc._host || this.doc).get(v);
+    if (v instanceof Selection) v = v.nodes[0];
+    if (!isObj(v) || Array.isArray(v)) throw new TypeError('wrap 系列方法需要一个 JSON 对象作为包裹元素');
+    v = cloneJson(v);
+    const ck = this.doc.options.childrenKey;
+    if (!Array.isArray(v[ck])) v[ck] = [];
+    return v;
+  }
+  _wrapOne(n, w) {
+    const doc = this.doc;
+    const m = doc._up.get(n);
+    if (!m) throw new Error('wrap 系列方法不能用于根节点');
+    const ck = doc.options.childrenKey;
+    let wn;
+    if (m.key === null) {
+      const idx = m.owner.indexOf(n);
+      doc._remove(m.owner, idx);
+      doc._insert(m.owner, idx, w);
+      wn = m.owner[idx];
+    } else {
+      doc._del(m.owner, m.key);
+      doc._set(m.owner, m.key, w);
+      wn = m.owner[m.key];
+    }
+    doc._insert(wn[ck], wn[ck].length, n, true);
+    return wn;
+  }
+}
+
+function withGet(arr) {
+  Object.defineProperties(arr, {
+    get: { value: (i) => (i === undefined ? arr.slice() : arr.at(i)) },
+    toArray: { value: () => arr.slice() },
+  });
+  return arr;
+}
+
+const camel = (s) => String(s).replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+const splitPath = (p) => String(p).split('.');
+
+function removePath(doc, n, segs) {
+  let c = n;
+  for (let i = 0; i < segs.length - 1 && isObj(c); i++) c = c[Array.isArray(c) ? Number(segs[i]) : segs[i]];
+  if (isObj(c)) doc._del(c, segs[segs.length - 1]);
 }
 
 // ---------- 工具函数 ----------
